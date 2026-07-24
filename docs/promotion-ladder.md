@@ -22,7 +22,7 @@ The project's own docs must name the exact promotion command or flow and the exa
 The fleet default is short-lived `dev/*` work branches into the persistent `staging` integration branch, then explicit promotion from `staging` to protected `main` as production.
 Preview deploys per work PR, merging to `staging` auto-deploys staging, and a reviewed `staging`-to-`main` PR or equivalent approved action promotes production.
 Prefer promoting the exact artifact that passed the staging smoke gate over rebuilding for production; a rebuild can drift from what was actually verified.
-`beta` branches are retired: no new work targets `beta`, and existing `beta` lines must migrate into this ladder.
+`beta` branches are retired: no new fleet work targets `beta`, and existing `beta` lines must migrate into this ladder. Firstmate's own current beta delivery base is a temporary exception; migrating Firstmate itself to `dev/*` -> `staging` -> protected `main` is separate planned future work.
 
 Boostin (`juniorlovestmh/boostin`) is the fleet's worked example: `dev/*` work branches merge into `staging`, which explicitly promotes into production `main` through a reviewed PR (see PRs #3 and #5).
 If the platform does not deploy production from protected `main`, the project must retain a separate protected manual or tag deployment after that branch promotion.
@@ -43,8 +43,8 @@ No secret value ever lands in the repo, in a committed `tfvars`/`wrangler.toml`,
 
 ## Smoke gate
 
-A smoke or health check runs against staging before production promotion is considered ready.
-The check must exercise the real staging deployment (a health endpoint, a scripted smoke path, or the platform's own health check), and the promotion step should refuse to proceed on a failing or skipped check.
+A smoke or health check runs against staging before production promotion is considered ready. Promotion must refuse a failing or skipped check; this prerequisite is mandatory and not bypassable except for an explicit captain-approved emergency, with the approval and bypass recorded.
+The check must exercise the real staging deployment (a health endpoint, a scripted smoke path, or the platform's own health check).
 
 ## Rollback documentation
 
@@ -58,8 +58,8 @@ Deploy staging with `wrangler deploy --env staging` on merge to `staging`; gate 
 Set secrets per environment with `wrangler secret put --env <env>` (or Doppler injection into the deploy job), never inline in `wrangler.toml`.
 
 **Cloudflare Pages** - use Pages preview deployments for ephemeral previews and a dedicated Pages project for persistent staging, with staging-specific secrets, bindings, and data stores; a preview branch alias is not an isolated staging environment, and Pages does not use Workers' named `--env staging` deployment flow.
-On merge to `staging`, deploy the built output to the dedicated staging project with `wrangler pages deploy <output-directory> --project-name <staging-project>`, then run the staging smoke check against that stable URL.
-After it passes, explicit promotion to `main` must deploy that same output directory with `wrangler pages deploy <output-directory> --project-name <production-project>`; do not rebuild between staging and production.
+On merge to `staging`, deploy the built output to the dedicated staging project with `wrangler pages deploy <output-directory> --project-name <staging-project>`, then run the staging smoke check against that stable URL. Publish the built output as a durable CI artifact keyed to the staging commit and record its digest.
+After it passes, explicit promotion to `main` must retrieve that exact artifact, verify its recorded digest and staging-commit provenance, and deploy it with `wrangler pages deploy <output-directory> --project-name <production-project>`; do not rebuild between staging and production.
 Deploy an ephemeral preview with `wrangler pages deploy <output-directory> --branch <preview-branch>` when the platform's preview flow is needed.
 Set Pages secrets and environment-specific configuration through the Pages project settings or the platform's supported secret store, never inline in committed configuration.
 
