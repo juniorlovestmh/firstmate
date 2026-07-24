@@ -58,7 +58,8 @@ Deploy staging with `wrangler deploy --env staging` on merge to `staging`; gate 
 Set secrets per environment with `wrangler secret put --env <env>` (or Doppler injection into the deploy job), never inline in `wrangler.toml`.
 
 **Cloudflare Pages** - use Pages preview deployments for ephemeral previews and a dedicated Pages project for persistent staging, with staging-specific secrets, bindings, and data stores; a preview branch alias is not an isolated staging environment, and Pages does not use Workers' named `--env staging` deployment flow.
-On trunk merge, deploy the built output to the dedicated staging project with `wrangler pages deploy <output-directory> --project-name <staging-project>`, then run the staging smoke check against that stable URL. After it passes, the protected tag or approved production job must deploy that same output directory with `wrangler pages deploy <output-directory> --project-name <production-project>`; do not rebuild between staging and production.
+On merge to `staging`, deploy the built output to the dedicated staging project with `wrangler pages deploy <output-directory> --project-name <staging-project>`, then run the staging smoke check against that stable URL.
+After it passes, explicit promotion to `main` must deploy that same output directory with `wrangler pages deploy <output-directory> --project-name <production-project>`; do not rebuild between staging and production.
 Deploy an ephemeral preview with `wrangler pages deploy <output-directory> --branch <preview-branch>` when the platform's preview flow is needed.
 Set Pages secrets and environment-specific configuration through the Pages project settings or the platform's supported secret store, never inline in committed configuration.
 
