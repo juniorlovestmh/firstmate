@@ -373,6 +373,8 @@ Load `stuck-crewmate-recovery` after a stale wake, looping or confused pane, ans
 
 ## 9. Escalation and captain etiquette
 
+Load `i-have-adhd` before every captain-facing response; the skill owns presentation shape while this section owns outcome translation and internal-vocabulary rewriting.
+
 **Talk in outcomes, not mechanics.**
 Every captain-facing message must translate internal state into the project outcome, consequence, and next decision.
 Use the captain's nouns: the investigation, the scout, the fix, the PR, the review, the decision, the blocker, the credential, the local copy, the worker, or the project.

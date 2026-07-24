@@ -17,6 +17,7 @@ CODEXAPP="$ROOT/.agents/skills/firstmate-codexapp/SKILL.md"
 FMX="$ROOT/.agents/skills/fmx-respond/SKILL.md"
 UPDATE="$ROOT/.agents/skills/updatefirstmate/SKILL.md"
 AHOY="$ROOT/.agents/skills/ahoy/SKILL.md"
+ADHD="$ROOT/.agents/skills/i-have-adhd/SKILL.md"
 README="$ROOT/README.md"
 
 section_9() {
@@ -149,6 +150,53 @@ test_section_9_owner_is_not_duplicated_into_skills() {
   done
   [ "$duplicate_count" -eq 0 ] || fail "skills duplicated section 9's mapping owner"
   pass "skills cross-reference section 9 instead of duplicating the mapping list"
+}
+
+test_adhd_presentation_skill_is_internal_and_always_loaded() {
+  assert_present "$ADHD" "ADHD presentation skill is missing"
+  assert_grep 'name: i-have-adhd' "$ADHD" "ADHD presentation skill has the wrong name"
+  assert_grep 'user-invocable: false' "$ADHD" "ADHD presentation skill must not be user-invocable"
+  assert_grep '  internal: true' "$ADHD" "ADHD presentation skill is not internal"
+  assert_grep 'Load `i-have-adhd` before every captain-facing response' "$AGENTS" \
+    "section 9 does not always load the ADHD presentation skill"
+  pass "ADHD presentation skill is internal and always loaded for captain chat"
+}
+
+test_adhd_presentation_contract_has_one_owner() {
+  local skill contract
+  skill=$(cat "$ADHD")
+  contract=$(section_9)
+  for phrase in \
+    "Lead with the outcome, decision, blocker, or next action" \
+    "Number multi-step work" \
+    "End with one concrete captain action" \
+    "Suppress tangents" \
+    "Restate the current step or state every turn" \
+    "Give concrete time estimates when they are decision-useful" \
+    "Make completed work visible" \
+    "State errors matter-of-factly" \
+    "Cap a list at five items" \
+    "Remove preambles, recaps, filler closers, and figurative language"; do
+    assert_contains "$skill" "$phrase" "ADHD presentation skill is missing '$phrase'"
+    assert_not_contains "$contract" "$phrase" "section 9 duplicated ADHD presentation rule '$phrase'"
+  done
+  pass "ADHD presentation contract has one owner"
+}
+
+test_adhd_skill_preserves_firstmate_boundaries() {
+  assert_grep "messages addressed to the captain, not worker instructions, commits, PRs, or evidence reports" "$ADHD" \
+    "ADHD skill scope is not limited to captain-facing messages"
+  assert_grep "first line is the result or active next action" "$ADHD" \
+    "ADHD skill does not define autonomous first-line behavior"
+  assert_grep "finish on concrete completion evidence" "$ADHD" \
+    "ADHD skill invents a next action after completion"
+  assert_grep "safety, accuracy, task completeness, and required tool-call commentary outrank brevity" "$ADHD" \
+    "ADHD skill does not preserve safety and completeness precedence"
+  assert_grep "AGENTS.md section 9 continues to own outcome translation and internal-vocabulary rewriting" "$ADHD" \
+    "ADHD skill does not preserve section 9 ownership"
+  assert_grep "explicit captain request for normal mode may suspend" "$ADHD" \
+    "ADHD skill does not support an explicit normal-mode override"
+  pass "ADHD presentation skill preserves Firstmate ownership and safety boundaries"
 }
 
 test_ahoy_is_an_internal_user_invocable_skill() {
@@ -286,6 +334,9 @@ test_verbatim_internal_evidence_is_rejected_from_chat
 test_routine_no_action_response_is_event_scoped
 test_outward_facing_skill_points_reference_section_9_owner
 test_section_9_owner_is_not_duplicated_into_skills
+test_adhd_presentation_skill_is_internal_and_always_loaded
+test_adhd_presentation_contract_has_one_owner
+test_adhd_skill_preserves_firstmate_boundaries
 test_ahoy_is_an_internal_user_invocable_skill
 test_ahoy_readme_uses_cross_harness_convention
 test_ahoy_owns_only_the_visible_session_recap
