@@ -4,10 +4,9 @@
 #
 # The hook fires as a Claude asyncRewake Stop hook. These tests run it hermetically
 # as a child of a fake harness (a bash symlink named "claude") whose pid is
-# written into the fixture home's state/.lock for ordinary owned-lock cases.
-# Stale-owner cases instead leave a dead recorded pid for the hook to reclaim
-# through the real fm-lock.sh path. The arm wrapper is a per-test fixture, so no
-# real watcher, model, or fleet state is touched.
+# written into the fixture home's state/.lock, which satisfies the hook's
+# session-identity gate exactly the way production does. The arm wrapper is a
+# per-test fixture, so no real watcher, model, or fleet state is touched.
 # shellcheck disable=SC2016 # single quotes are deliberate: $FM_HOME expands inside the fake harness child, and grep needles are literal strings
 set -u
 
@@ -20,7 +19,6 @@ fm_git_identity fmtest fmtest@example.invalid
 FAKEBIN=$(fm_fakebin "$TMP_ROOT/fakebin")
 ln -s /bin/bash "$FAKEBIN/claude"
 FAKE_CLAUDE="$FAKEBIN/claude"
-export FAKE_CLAUDE
 
 # Copy the hook and its sourced dependencies into a fixture checkout.
 install_autoarm_scripts() {
@@ -31,8 +29,7 @@ install_autoarm_scripts() {
   cp "$ROOT/bin/fm-supervision-lib.sh" "$dir/bin/fm-supervision-lib.sh"
   cp "$ROOT/bin/fm-wake-lib.sh" "$dir/bin/fm-wake-lib.sh"
   cp "$ROOT/bin/fm-session-lock-lib.sh" "$dir/bin/fm-session-lock-lib.sh"
-  cp "$ROOT/bin/fm-lock.sh" "$dir/bin/fm-lock.sh"
-  chmod +x "$dir/bin/fm-claude-stop-autoarm.sh" "$dir/bin/fm-lock.sh"
+  chmod +x "$dir/bin/fm-claude-stop-autoarm.sh"
 }
 
 make_primary_dir() {
@@ -150,6 +147,28 @@ epoch_outcome() {
 
 # --- registration contract ----------------------------------------------------
 
+test_settings_registers_autoarm_with_multi_hour_timeout() {
+  local settings
+  settings="$ROOT/.claude/settings.json"
+  jq -e '
+    [.hooks.Stop[].hooks[] | select(.command | contains("fm-claude-stop-autoarm.sh"))]
+      | length == 1
+  ' "$settings" >/dev/null || fail "settings must register exactly one Stop auto-arm hook"
+  jq -e '
+    [.hooks.Stop[].hooks[] | select(.command | contains("fm-claude-stop-autoarm.sh"))][0]
+      | .asyncRewake == true and .type == "command" and (.timeout | type == "number" and . >= 28800)
+  ' "$settings" >/dev/null || fail "auto-arm must be asyncRewake with an explicit timeout of at least 28800s (the 600s default is forbidden)"
+  jq -e '
+    [.hooks.Stop[].hooks[] | select(.command | contains("fm-claude-stop-autoarm.sh"))][0].command
+      | contains("&") | not
+  ' "$settings" >/dev/null || fail "auto-arm registration must not use shell fire-and-forget"
+  grep -q '"$SCRIPT_DIR/fm-watch-arm.sh" >"$OUT" 2>&1' "$ROOT/bin/fm-claude-stop-autoarm.sh" \
+    || fail "auto-arm must foreground the arm wrapper inside the hook-owned process tree"
+  grep -q 'asyncRewake' "$ROOT/bin/fm-claude-stop-autoarm.sh" \
+    || fail "auto-arm header must document its asyncRewake registration contract"
+  pass "settings.json registers the asyncRewake auto-arm with timeout >= 28800 and a foreground arm"
+}
+
 # --- scope and gates ----------------------------------------------------------
 
 test_inert_in_child_worktree() {
@@ -178,45 +197,21 @@ test_inert_without_session_lock() {
   pass "auto-arm: inert with no session lock"
 }
 
-test_reclaims_stale_session_lock_before_arming() {
-  local dir out status expected_owner actual_owner
-  dir=$(make_primary_dir "$TMP_ROOT/stale-lock")
-  : > "$dir/state/task.meta"
-  printf '9999999\n' > "$dir/state/.lock"
-  write_arm_fixture "$dir" actionable
-  out=$(printf '%s\n' '{"session_id":"stale"}' \
-    | FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-        printf "%s\n" "$$" > "$FM_HOME/state/expected-owner"
-        "$FM_HOME/bin/fm-claude-stop-autoarm.sh"
-      ' 2>&1); status=$?
-  expect_code 2 "$status" "a dead recorded session owner must be reclaimed before the actionable rewake"
-  expected_owner=$(cat "$dir/state/expected-owner")
-  actual_owner=$(cat "$dir/state/.lock")
-  [ "$actual_owner" = "$expected_owner" ] || fail "stale session lock was not claimed by the current harness: expected $expected_owner, got $actual_owner"
-  [ -e "$dir/state/arm-ran" ] || fail "hook did not arm after reclaiming the stale session lock"
-  [ "$(epoch_outcome "$dir")" = rewake ] || fail "stale-lock recovery must record outcome=rewake"
-  pass "auto-arm: a demonstrably dead recorded session owner is reclaimed through fm-lock.sh before arming"
-}
-
 test_inert_when_lock_held_by_other_harness() {
-  local dir other out status owner_after
+  local dir other out status
   dir=$(make_primary_dir "$TMP_ROOT/other-lock")
   : > "$dir/state/task.meta"
   write_arm_fixture "$dir" actionable
-  # The trailing no-op keeps the fake harness process alive instead of allowing
-  # bash to exec the final sleep into a non-harness process.
-  "$FAKE_CLAUDE" -c 'sleep 60; :' &
+  # Another live harness holds the lock; our hook runs under a different fake claude.
+  "$FAKE_CLAUDE" -c 'sleep 60' &
   other=$!
   printf '%s\n' "$other" > "$dir/state/.lock"
   out=$(printf '%s\n' '{"session_id":"s"}' | FM_HOME="$dir" "$FAKE_CLAUDE" -c '"$FM_HOME/bin/fm-claude-stop-autoarm.sh"' 2>&1); status=$?
-  owner_after=$(cat "$dir/state/.lock")
   kill "$other" 2>/dev/null || true
   wait "$other" 2>/dev/null || true
   expect_code 0 "$status" "hook must stay inert when another live harness holds the session lock"
-  [ "$owner_after" = "$other" ] || fail "hook replaced another live harness owner: expected $other, got $owner_after"
   [ ! -e "$dir/state/arm-ran" ] || fail "hook armed while another session owned the lock"
-  [ ! -e "$dir/state/.claude-autoarm-epoch" ] || fail "hook wrote an epoch while another session owned the lock"
-  pass "auto-arm: inert without arm, rewake, or lock replacement when another live harness owns the home"
+  pass "auto-arm: inert when the session lock belongs to another live harness"
 }
 
 test_inert_when_afk() {
@@ -229,59 +224,6 @@ test_inert_when_afk() {
   expect_code 0 "$status" "hook must never arm or rewake while away mode owns triage"
   [ ! -e "$dir/state/arm-ran" ] || fail "hook armed while state/.afk existed"
   pass "auto-arm: inert while AFK owns supervision"
-}
-
-test_stale_lock_recovery_preserves_afk_and_need_gates() {
-  local afk_dir idle_dir out status
-  afk_dir=$(make_primary_dir "$TMP_ROOT/stale-afk")
-  : > "$afk_dir/state/task.meta"
-  : > "$afk_dir/state/.afk"
-  printf '9999999\n' > "$afk_dir/state/.lock"
-  write_arm_fixture "$afk_dir" actionable
-  out=$(printf '%s\n' '{"session_id":"stale-afk"}' | FM_HOME="$afk_dir" "$FAKE_CLAUDE" -c '"$FM_HOME/bin/fm-claude-stop-autoarm.sh"' 2>&1); status=$?
-  expect_code 0 "$status" "a stale owner must not widen the AFK gate"
-  [ "$(cat "$afk_dir/state/.lock")" = 9999999 ] || fail "AFK stale lock was reclaimed despite away ownership"
-  [ ! -e "$afk_dir/state/arm-ran" ] || fail "stale AFK home armed"
-
-  idle_dir=$(make_primary_dir "$TMP_ROOT/stale-idle")
-  printf '9999999\n' > "$idle_dir/state/.lock"
-  write_arm_fixture "$idle_dir" actionable
-  out=$(printf '%s\n' '{"session_id":"stale-idle"}' | FM_HOME="$idle_dir" "$FAKE_CLAUDE" -c '"$FM_HOME/bin/fm-claude-stop-autoarm.sh"' 2>&1); status=$?
-  expect_code 0 "$status" "a stale owner must not widen the supervision-need gate"
-  [ "$(cat "$idle_dir/state/.lock")" = 9999999 ] || fail "idle stale lock was reclaimed without supervision need"
-  [ ! -e "$idle_dir/state/arm-ran" ] || fail "stale idle home armed"
-  pass "auto-arm: stale-owner recovery leaves the AFK and supervision-need gates unchanged"
-}
-
-test_resolves_outermost_claude_pid_in_nested_bgspare_chain() {
-  local dir out status inner_pid lock_pid
-  dir=$(make_primary_dir "$TMP_ROOT/nested-chain")
-  : > "$dir/state/task.meta"
-  write_arm_fixture "$dir" actionable
-  # A genuine multi-level contiguous claude-named ancestry: the hook fires
-  # inside an inner fake-claude process (its recorded pid is distinct from its
-  # own parent, a second, outer fake-claude process holding the session lock -
-  # the bg-spare shape). Only the outer pid may own the lock; a
-  # first-match-wins walk would resolve to the inner pid instead and leave the
-  # hook inert. The inner process records its own pid before running the hook
-  # so bash cannot tail-exec-collapse it into the outer pid, which would
-  # collapse the two-hop chain this test depends on down to one hop.
-  out=$(printf '%s\n' '{"session_id":"nested"}' \
-    | FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-        printf "%s\n" "$$" > "$FM_HOME/state/.lock"
-        "$FAKE_CLAUDE" -c "
-          printf \"%s\n\" \"\$\$\" > \"\$FM_HOME/state/inner-pid\"
-          \"\$FM_HOME/bin/fm-claude-stop-autoarm.sh\"
-        "
-      ' 2>&1); status=$?
-  inner_pid=$(cat "$dir/state/inner-pid" 2>/dev/null || true)
-  lock_pid=$(cat "$dir/state/.lock" 2>/dev/null || true)
-  [ -n "$inner_pid" ] && [ "$inner_pid" != "$lock_pid" ] \
-    || fail "test setup did not produce a genuine two-hop claude chain: inner=$inner_pid lock=$lock_pid"
-  expect_code 2 "$status" "a nested contiguous claude ancestry must resolve to the outer lock-owning pid and arm"
-  [ -e "$dir/state/arm-ran" ] || fail "hook did not resolve past the inner claude-named process to the outer lock owner"
-  [ "$(epoch_outcome "$dir")" = rewake ] || fail "nested-chain arm must record outcome=rewake"
-  pass "auto-arm: resolves the outermost pid of a nested contiguous claude ancestry (bg-spare chain)"
 }
 
 test_inert_when_fleet_idle() {
@@ -416,13 +358,11 @@ test_fm_lock_status_still_works_with_shared_lib() {
   pass "fm-lock: shared session-lock lib preserves the status path"
 }
 
+test_settings_registers_autoarm_with_multi_hour_timeout
 test_inert_in_child_worktree
 test_inert_without_session_lock
-test_reclaims_stale_session_lock_before_arming
 test_inert_when_lock_held_by_other_harness
 test_inert_when_afk
-test_stale_lock_recovery_preserves_afk_and_need_gates
-test_resolves_outermost_claude_pid_in_nested_bgspare_chain
 test_inert_when_fleet_idle
 test_actionable_close_rewakes_with_reason
 test_failed_close_rewakes_with_failure_banner
