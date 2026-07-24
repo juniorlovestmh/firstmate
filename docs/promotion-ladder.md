@@ -57,8 +57,9 @@ Keep that detail in the project, not duplicated here; this doc owns the contract
 Deploy staging with `wrangler deploy --env staging` on merge to `staging`; gate production behind a separate `wrangler deploy --env production` step after the reviewed promotion to `main`.
 Set secrets per environment with `wrangler secret put --env <env>` (or Doppler injection into the deploy job), never inline in `wrangler.toml`.
 
-**Cloudflare Pages** - use Pages preview deployments for previews and the configured production branch for production; Pages does not use Workers' named `--env staging` deployment flow.
-Deploy a preview with `wrangler pages deploy <output-directory> --branch <preview-branch>` and deploy production with `wrangler pages deploy <output-directory>` (or the project's configured production branch), with the production command restricted to the protected tag or approved job.
+**Cloudflare Pages** - use Pages preview deployments for ephemeral previews and a dedicated Pages staging project or fixed `staging` branch alias/subdomain for the persistent staging environment; Pages does not use Workers' named `--env staging` deployment flow.
+On trunk merge, deploy the built output to the staging project or with `wrangler pages deploy <output-directory> --branch staging`, then run the staging smoke check against that stable URL. After it passes, the protected tag or approved production job must deploy that same output directory with `wrangler pages deploy <output-directory>` to the configured production branch; do not rebuild between staging and production.
+Deploy an ephemeral preview with `wrangler pages deploy <output-directory> --branch <preview-branch>` when the platform's preview flow is needed.
 Set Pages secrets and environment-specific configuration through the Pages project settings or the platform's supported secret store, never inline in committed configuration.
 
 **OpenTofu-managed infra** - keep a separate state per environment (a workspace or state file per env), never a shared state across dev/staging/production.
