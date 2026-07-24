@@ -107,8 +107,10 @@ test_verbatim_internal_evidence_is_rejected_from_chat() {
 test_routine_no_action_response_is_event_scoped() {
   local contract
   contract=$(section_9)
-  assert_contains "$contract" 'reply exactly `Captain, shipshape.` without characterizing the visible session' \
-    "section 9 does not require the exact event-scoped routine no-action response"
+  assert_contains "$contract" 'report its concrete outcome and evidence without characterizing the visible session' \
+    "section 9 does not require concrete event-scoped routine no-action evidence"
+  assert_contains "$contract" 'may add nautical flavor but must not stand alone or replace required content' \
+    "section 9 does not prevent a canned phrase from replacing required content"
   assert_not_contains "$contract" 'Captain, no decision is needed.' \
     "section 9 implies the visible session has no unrelated open decisions"
   pass "routine no-action response is exact and scoped to its event"
@@ -190,6 +192,10 @@ test_adhd_skill_preserves_firstmate_boundaries() {
     "ADHD skill does not define autonomous first-line behavior"
   assert_grep "finish on concrete completion evidence" "$ADHD" \
     "ADHD skill invents a next action after completion"
+  assert_grep "completion-evidence ending takes precedence over any exact canned phrase" "$ADHD" \
+    "ADHD skill does not define precedence over canned routine responses"
+  assert_grep "may open or season the response but never stand alone or replace that required content" "$ADHD" \
+    "ADHD skill permits canned routine responses to replace required content"
   assert_grep "safety, accuracy, task completeness, and required tool-call commentary outrank brevity" "$ADHD" \
     "ADHD skill does not preserve safety and completeness precedence"
   assert_grep "AGENTS.md section 9 applies underneath this presentation layer and continues to own outcome translation, internal-vocabulary rewriting, standalone escalations, and concrete evidence-first context" "$ADHD" \
