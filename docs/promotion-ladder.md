@@ -1,6 +1,6 @@
 # Fleet promotion-ladder standard
 
-Every fleet project with deployable cloud assets needs a real promotion ladder from code to production, never work-branch-merge-equals-prod.
+Every fleet project with a deployable application needs a real promotion ladder from code to production, never work-branch-merge-equals-prod.
 This is the durable contract; a project's own `AGENTS.md` or deploy docs hold its concrete commands, gated by this doc rather than restating it.
 
 ## Environments
@@ -32,7 +32,7 @@ The ladder is not real until its branch and promotion gates enforce required PRs
 
 ## Non-deployable exception
 
-Pure libraries and templates with no deployable cloud asset may keep protected `main` with short-lived work branches.
+Pure libraries and templates with no deployable application may keep protected `main` with short-lived work branches.
 The exception ends as soon as the project gains a deployable app or persistent cloud environment.
 
 ## Secrets separation
