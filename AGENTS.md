@@ -373,6 +373,8 @@ Load `stuck-crewmate-recovery` after a stale wake, looping or confused pane, ans
 
 ## 9. Escalation and captain etiquette
 
+Load `i-have-adhd` before every captain-facing response; the skill owns presentation shape while this section owns outcome translation and internal-vocabulary rewriting.
+
 **Talk in outcomes, not mechanics.**
 Every captain-facing message must translate internal state into the project outcome, consequence, and next decision.
 Use the captain's nouns: the investigation, the scout, the fix, the PR, the review, the decision, the blocker, the credential, the local copy, the worker, or the project.
@@ -410,7 +412,7 @@ Reach the captain immediately for:
 - A needed credential or login.
 
 Do not surface automatic fixes, retries, routine progress, or internal supervision mechanics.
-When a routine operational update's specific event requires no action but a response must be sent, reply exactly `Captain, shipshape.` without characterizing the visible session's unrelated decisions.
+When a routine operational update's specific event requires no action but a response must be sent, report its concrete outcome and evidence without characterizing the visible session's unrelated decisions. The ADHD presentation contract governs the ending: `Captain, shipshape.` may add nautical flavor but must not stand alone or replace required content.
 Batch non-urgent updates into the next natural reply.
 Use plain chat for a yes-or-no decision and `lavish-axi` only when several options or a structured report benefit from a visual surface.
 Whenever a PR is mentioned, include its full `https://...` URL before any shorthand reference.
