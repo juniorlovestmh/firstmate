@@ -24,7 +24,8 @@ Preview deploys per work PR, merging to `staging` auto-deploys staging, and a re
 Prefer promoting the exact artifact that passed the staging smoke gate over rebuilding for production; a rebuild can drift from what was actually verified.
 `beta` branches are retired: no new work targets `beta`, and existing `beta` lines must migrate into this ladder.
 
-Boostin (`juniorlovestmh/boostin`) is the fleet's worked example: `dev/*` work branches merge into `staging`, which promotes into `main` through a reviewed PR (see PRs #3 and #5).
+Boostin (`juniorlovestmh/boostin`) is the fleet's worked example: `dev/*` work branches merge into `staging`, which explicitly promotes into production `main` through a reviewed PR (see PRs #3 and #5).
+If the platform does not deploy production from protected `main`, the project must retain a separate protected manual or tag deployment after that branch promotion.
 Its CI (`.github/workflows/verify.yml`) runs on PRs and on push to `staging`/`main`/`dev/**`, so every branch in the chain is validated.
 A 2026-07-22 audit found that its documented ladder was social, not mechanical: `main` and `staging` had no branch protection or rulesets, so a direct push could bypass the PR-and-green-check path entirely.
 The ladder is not real until its branch and promotion gates enforce required PRs, required green checks, and no direct pushes.
@@ -52,12 +53,17 @@ Keep that detail in the project, not duplicated here; this doc owns the contract
 
 ## Per-platform appendix
 
-**Cloudflare Workers/Pages** - use Wrangler environments (`[env.staging]`, `[env.production]` in `wrangler.toml`) or Pages branch/preview deployments for the preview tier.
+**Cloudflare Workers** - use Wrangler environments (`[env.staging]`, `[env.production]` in `wrangler.toml`) for the staging and production tiers.
 Deploy staging with `wrangler deploy --env staging` on merge to `staging`; gate production behind a separate `wrangler deploy --env production` step after the reviewed promotion to `main`.
 Set secrets per environment with `wrangler secret put --env <env>` (or Doppler injection into the deploy job), never inline in `wrangler.toml`.
 
+**Cloudflare Pages** - use Pages preview deployments for previews and the configured production branch for production; Pages does not use Workers' named `--env staging` deployment flow.
+Deploy a preview with `wrangler pages deploy <output-directory> --branch <preview-branch>` and deploy production with `wrangler pages deploy <output-directory>` (or the project's configured production branch), with the production command restricted to the protected tag or approved job.
+Set Pages secrets and environment-specific configuration through the Pages project settings or the platform's supported secret store, never inline in committed configuration.
+
 **OpenTofu-managed infra** - keep a separate state per environment (a workspace or state file per env), never a shared state across dev/staging/production.
-Auto-apply staging's plan on merge to `staging`; promote production by applying the same reviewed plan artifact after the reviewed promotion to `main`, never a fresh unreviewed plan.
+Auto-apply staging's plan on merge to `staging`; promote the reviewed configuration or commit, then generate a production-specific plan against production state and apply it only after the explicit promotion to `main`.
+Never apply a staging plan artifact to production or apply a fresh unreviewed plan.
 Inject variables and secrets via Doppler or the cloud provider's native secret store, never as committed `tfvars`.
 
 **GitHub Actions deploy jobs** - use GitHub Environments (`staging`, `production`) with environment-scoped secrets.
