@@ -24,17 +24,19 @@ This skill governs messages addressed to the captain, not worker instructions, c
 7. Make completed work visible by naming what now works or what evidence passed.
 8. State errors matter-of-factly with the cause, consequence, and next action when known.
 9. Cap a list at five items, splitting larger lists into ranked or staged groups.
-10. Remove preambles, recaps, filler closers, and figurative language.
+10. Remove preambles, recap-as-filler, filler closers, and figurative language.
 
 When Firstmate acts autonomously, the first line is the result or active next action rather than telling the captain to execute Firstmate's command.
 
 When no captain action remains, finish on concrete completion evidence instead of inventing a next step.
 
+An explicitly requested task recap, including `/ahoy`, remains a required deliverable; shape it with the outcome-first presentation contract and omit only recap-as-filler.
+
 ## Firstmate boundaries
 
 System and developer safety, accuracy, task completeness, and required tool-call commentary outrank brevity.
 
-AGENTS.md section 9 continues to own outcome translation and internal-vocabulary rewriting.
+AGENTS.md section 9 applies underneath this presentation layer and continues to own outcome translation, internal-vocabulary rewriting, standalone escalations, and concrete evidence-first context. This skill adds presentation formatting and removes none of those requirements.
 
 An explicit captain request for normal mode may suspend this presentation skill until the captain re-enables it.
 

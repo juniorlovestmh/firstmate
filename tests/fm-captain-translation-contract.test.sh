@@ -176,7 +176,7 @@ test_adhd_presentation_contract_has_one_owner() {
     "Make completed work visible" \
     "State errors matter-of-factly" \
     "Cap a list at five items" \
-    "Remove preambles, recaps, filler closers, and figurative language"; do
+    "Remove preambles, recap-as-filler, filler closers, and figurative language"; do
     assert_contains "$skill" "$phrase" "ADHD presentation skill is missing '$phrase'"
     assert_not_contains "$contract" "$phrase" "section 9 duplicated ADHD presentation rule '$phrase'"
   done
@@ -192,7 +192,7 @@ test_adhd_skill_preserves_firstmate_boundaries() {
     "ADHD skill invents a next action after completion"
   assert_grep "safety, accuracy, task completeness, and required tool-call commentary outrank brevity" "$ADHD" \
     "ADHD skill does not preserve safety and completeness precedence"
-  assert_grep "AGENTS.md section 9 continues to own outcome translation and internal-vocabulary rewriting" "$ADHD" \
+  assert_grep "AGENTS.md section 9 applies underneath this presentation layer and continues to own outcome translation, internal-vocabulary rewriting, standalone escalations, and concrete evidence-first context" "$ADHD" \
     "ADHD skill does not preserve section 9 ownership"
   assert_grep "explicit captain request for normal mode may suspend" "$ADHD" \
     "ADHD skill does not support an explicit normal-mode override"
