@@ -8,7 +8,6 @@
 #          Lines: "MISSING: <tool> (install: <command>)",
 #                 "MISSING_MANUAL: <tool> (instructions: <url>)", "NEEDS_GH_AUTH",
 #                 "BACKEND_INVALID: <name> (known: <names>)",
-#                 "STARTUP_MEMORY_BUDGET: invalid config/startup-memory-budget - <reason>",
 #                 "CREW_DISPATCH: invalid config/crew-dispatch.json - <reason>",
 #                 "FLEET_SYNC: <repo>: skipped|recovered|STUCK: <detail>",
 #                 "PR_CHECK_MIGRATION: <private remediation>",
@@ -54,13 +53,7 @@
 #          with update --archive-body and mv [<id>...]); an installed but
 #          incompatible build reports MISSING like no-mistakes. A compatible
 #          tasks-axi default backend is silent. quota-axi is required for the
-#          agent-owned dispatch-profile array procedure in AGENTS.md section 4
-#          and .agents/skills/quota-array-dispatch/SKILL.md.
-#          On a primary home, the locked mutable path materializes the visible
-#          default config/startup-memory-budget=7500 when absent. It never
-#          guesses at malformed or unsafe existing files, and secondmate homes
-#          await the primary-authoritative inherited value instead of creating
-#          their own.
+#          agent-owned dispatch-profile array procedure in AGENTS.md section 4.
 #          X mode is OPTIONAL and inert unless FM_HOME/.env has a non-empty
 #          FMX_PAIRING_TOKEN. When opted in, bootstrap requires curl+jq, writes
 #          the relay poll shim and 30s cadence config, and prints an FMX line.
@@ -103,8 +96,6 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-ff-lib.sh"
 # shellcheck source=bin/fm-config-inherit-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-config-inherit-lib.sh"
-# shellcheck source=bin/fm-startup-memory-budget-lib.sh disable=SC1091
-. "$SCRIPT_DIR/fm-startup-memory-budget-lib.sh"
 # shellcheck source=bin/fm-x-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-x-lib.sh"
 # shellcheck source=bin/fm-backend.sh disable=SC1091
@@ -445,7 +436,7 @@ secondmate_liveness_sweep() {
     [ -n "$target" ] || target="$window"
     agent_state=$(fm_backend_agent_state "$backend" "$target" 2>/dev/null) || agent_state=unreadable
     case "$harness" in
-      claude|codex|opencode|pi|pi-signed|grok|kimi) ;;
+      claude|codex|opencode|pi|grok) ;;
       *)
         case "$agent_state" in dead|missing) agent_state=unverified-harness ;; esac
         ;;
@@ -628,7 +619,7 @@ x_mode_remove_artifact() {
 # applying a cadence transition to a running watcher is the caller's job via
 # the emitted harness-aware supervision repair instruction.
 x_mode_setup() {
-  local env_file token shim cadence shim_body cadence_body tool missing shim_home
+  local env_file token shim cadence shim_body cadence_body tool missing
   env_file="$FM_HOME/.env"
   shim="$STATE/x-watch.check.sh"
   cadence="$CONFIG/x-mode.env"
@@ -691,16 +682,9 @@ x_mode_setup() {
 
   mkdir -p "$STATE" "$CONFIG" 2>/dev/null || { fmx_arm_failed; return 0; }
 
-  case "$FM_HOME" in
-    /*) shim_home=$FM_HOME ;;
-    *)
-      shim_home=$(CDPATH='' cd -- "$FM_HOME" 2>/dev/null && pwd -P) \
-        || { fmx_arm_failed; return 0; }
-      ;;
-  esac
-  shim_body=$(fmx_poll_shim_content "$shim_home" "$FM_ROOT")
+  shim_body=$(fmx_poll_shim_content "$FM_HOME" "$FM_ROOT")
   x_mode_write_if_changed "$shim" "$shim_body" 700 || { fmx_arm_failed; return 0; }
-  fmx_poll_shim_valid "$shim" "$shim_home" "$FM_ROOT" \
+  fmx_poll_shim_valid "$shim" "$FM_HOME" "$FM_ROOT" \
     || { fmx_arm_failed; return 0; }
 
   cadence_body=$(cat <<'EOF'
@@ -729,15 +713,15 @@ crew_dispatch_validate() {
     return 0
   fi
   err=$(jq -r '
-    def verified($h): ["claude","codex","opencode","pi","pi-signed","grok","kimi"] | index($h);
+    def verified($h): ["claude","codex","opencode","pi","grok"] | index($h);
     def effort_ok($h; $e):
       if $e == null then true
       elif ($e | type) != "string" then false
       elif $h == "claude" then (["low","medium","high","xhigh","max"] | index($e))
       elif $h == "codex" then (["low","medium","high","xhigh"] | index($e))
       elif $h == "grok" then (["low","medium","high"] | index($e))
-      elif $h == "pi" or $h == "pi-signed" then (["low","medium","high","xhigh","max"] | index($e))
-      elif $h == "opencode" or $h == "kimi" then false
+      elif $h == "pi" then (["low","medium","high","xhigh","max"] | index($e))
+      elif $h == "opencode" then false
       else true
       end;
     def profiles($value):
@@ -813,18 +797,6 @@ crew_dispatch_validate() {
   fi
 }
 
-startup_memory_budget_setup() {
-  # Primary bootstrap owns default publication. A secondmate is deliberately
-  # passive here because its setting must converge from the primary through the
-  # inherited-local-material contract rather than becoming a local authority.
-  if [ -e "$FM_HOME/.fm-secondmate-home" ] || [ -L "$FM_HOME/.fm-secondmate-home" ]; then
-    return 0
-  fi
-  if ! fm_startup_memory_budget_materialize "$CONFIG"; then
-    echo "STARTUP_MEMORY_BUDGET: invalid config/$FM_STARTUP_MEMORY_BUDGET_FILE - $FM_STARTUP_MEMORY_BUDGET_ERROR"
-  fi
-}
-
 if [ "${1:-}" = "install" ]; then
   shift
   [ $# -gt 0 ] || { echo "usage: fm-bootstrap.sh install <tool>..." >&2; exit 1; }
@@ -847,7 +819,6 @@ fi
 # runnable. Detect-only sessions never touch state.
 if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ]; then
   "$SCRIPT_DIR/fm-pr-check-migrate.sh" || true
-  startup_memory_budget_setup
 fi
 
 if [ "$BACKEND_VALID" -eq 0 ]; then
