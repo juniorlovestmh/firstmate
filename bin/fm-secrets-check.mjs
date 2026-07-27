@@ -377,6 +377,12 @@ function validateManifestSemantics(doc, label, today = policyToday()) {
   if (!nonEmptyString(doc.repository) || !doc.repository.includes("/")) {
     add("repository", "must be an owner/name string");
   }
+  if (doc.repositoryVisibility !== "private" && doc.repositoryVisibility !== "public") {
+    add("repositoryVisibility", "must be private or public");
+  }
+  if (!["none", "pull-request", "pull-request-target"].includes(doc.forkExposure)) {
+    add("forkExposure", "must be none, pull-request, or pull-request-target");
+  }
   if (!allowedClassifications.has(doc.classification)) {
     add("classification", `must be one of ${[...allowedClassifications].join(", ")}`);
   }
@@ -512,13 +518,28 @@ function validateManifestSemantics(doc, label, today = policyToday()) {
     const secretBearingIdentity =
       doc.ci.identity === "doppler-service-token" || doc.ci.identity === "doppler-oidc";
     const ownedRunner = doc.ci.runner === "owned-linux" || doc.ci.runner === "owned-macos";
+    const hostedException = Array.isArray(doc.exceptions)
+      ? doc.exceptions.some((exception) => exception?.kind === "hosted-runner")
+      : false;
+    const overrideUnavailable =
+      doc.repositoryVisibility !== "private" || doc.forkExposure !== "none" || hostedException;
+    const declaredOverride = Array.isArray(doc.exceptions)
+      ? doc.exceptions.some((exception) => exception?.kind === "non-owned-runner-doppler")
+      : false;
+    if (declaredOverride && overrideUnavailable) {
+      add(
+        "exceptions",
+        "non-owned-runner-doppler is unavailable for public or fork-exposed repositories and hosted-runner exceptions",
+      );
+    }
     if (secretBearingIdentity && !ownedRunner) {
       const override = Array.isArray(doc.exceptions)
         ? doc.exceptions.find(
             (exception) =>
               exception?.kind === "non-owned-runner-doppler" &&
               nonEmptyString(exception.workflow) &&
-              nonEmptyString(exception.reason),
+              nonEmptyString(exception.reason) &&
+              !overrideUnavailable,
           )
         : null;
       if (!override) {
@@ -544,6 +565,15 @@ const ownedWorkflowTargets = new Set([
   "[self-hosted, Linux, X64, fleet-ci]",
   "[self-hosted, macOS, ARM64, fleet-ci]",
 ]);
+
+function workflowCanReceiveFork(content) {
+  return (
+    /^  (?:pull_request|pull_request_target):\s*/m.test(content) ||
+    /^on:\s*(?:\[[^\]]*\b(?:pull_request|pull_request_target)\b[^\]]*\]|(?:pull_request|pull_request_target))\s*$/m.test(
+      content,
+    )
+  );
+}
 
 function workflowJobs(content) {
   const lines = content.split(/\r?\n/);
@@ -601,6 +631,23 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
       return;
     }
     let injectingJobs = 0;
+    const forkExposed = workflowCanReceiveFork(content);
+    const hostedException = Array.isArray(manifest?.exceptions)
+      ? manifest.exceptions.some((exception) => exception?.kind === "hosted-runner")
+      : false;
+    const overrideUnavailable =
+      manifest?.repositoryVisibility !== "private" ||
+      manifest?.forkExposure !== "none" ||
+      hostedException ||
+      forkExposed;
+    if (
+      forkExposed &&
+      Array.isArray(manifest?.exceptions) &&
+      manifest.exceptions.some((exception) => exception?.kind === "non-owned-runner-doppler")
+    ) {
+      fail(`${projectLabel}/${workflowFile}: fork-exposed workflows cannot use a non-owned-runner-doppler override`);
+      return;
+    }
     parsed.jobs.forEach((job) => {
       const jobText = job.lines.join("\n");
       const usesDoppler = /uses:\s*dopplerhq\/secrets-fetch-action@/.test(jobText);
@@ -619,7 +666,8 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
             (exception) =>
               exception?.kind === "non-owned-runner-doppler" &&
               exception.workflow === workflowFile &&
-              nonEmptyString(exception.reason),
+              nonEmptyString(exception.reason) &&
+              !overrideUnavailable,
           )
         : null;
       if (!owned && !override) {
