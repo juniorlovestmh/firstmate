@@ -222,19 +222,20 @@ test_identity_and_exception_cross_fields_are_enforced() {
 }
 
 test_doppler_injection_requires_owned_runner_or_explicit_workflow_override() {
-  local rejected hosted incomplete approved public out rc
+  local rejected hosted incomplete approved public unknown out rc
   rejected="$TMP_ROOT/non-owned-doppler.json"
   hosted="$TMP_ROOT/non-owned-doppler-hosted-exception.json"
   incomplete="$TMP_ROOT/non-owned-doppler-incomplete-override.json"
   approved="$TMP_ROOT/non-owned-doppler-override.json"
   public="$TMP_ROOT/non-owned-doppler-public.json"
+  unknown="$TMP_ROOT/non-owned-doppler-unknown-exposure.json"
   sed 's/"runner": "owned-linux"/"runner": "github-hosted-public-fork"/' \
     "$EXAMPLE" >"$rejected"
   rc=0
   out=$("$CHECK" manifest "$rejected" 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "checker accepted Doppler injection on a non-owned runner"
-  assert_contains "$out" "non-owned-runner-doppler" \
-    "checker did not require the named non-owned-runner Doppler override"
+  assert_contains "$out" "owned runner" \
+    "checker did not keep the owned-runner predicate authoritative"
 
   python3 - "$rejected" "$hosted" "$incomplete" <<'PY'
 import json
@@ -282,9 +283,10 @@ with open(sys.argv[2], "w", encoding="utf-8") as fh:
     json.dump(manifest, fh, indent=2)
     fh.write("\n")
 PY
-  out=$("$CHECK" manifest "$approved" 2>&1) \
-    || fail "checker rejected a complete documented non-owned-runner override"$'\n'"$out"
-  assert_contains "$out" "manifest: ok" "checker did not report the override manifest as valid"
+  rc=0
+  out=$("$CHECK" manifest "$approved" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "checker allowed an override to unlock a non-owned runner"
+  assert_contains "$out" "owned runner" "checker did not keep the runner predicate authoritative"
   python3 - "$approved" "$public" <<'PY'
 import json
 import sys
@@ -300,7 +302,22 @@ PY
   out=$("$CHECK" manifest "$public" 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "checker accepted a public repository override"
   assert_contains "$out" "unavailable" "checker did not enforce the public repository override wall"
-  pass "Doppler injection fails closed off owned runners and permits only the named workflow override"
+  python3 - "$approved" "$unknown" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    manifest = json.load(fh)
+manifest["forkExposure"] = "unknown"
+with open(sys.argv[2], "w", encoding="utf-8") as fh:
+    json.dump(manifest, fh, indent=2)
+    fh.write("\n")
+PY
+  rc=0
+  out=$("$CHECK" manifest "$unknown" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "checker accepted unknown repository exposure"
+  assert_contains "$out" "forkExposure" "checker did not refuse unknown repository exposure"
+  pass "Doppler injection keeps the owned-runner predicate authoritative"
 }
 
 test_temporary_migration_review_window_is_deterministic() {
@@ -349,13 +366,13 @@ PY
 
 test_inventory_rejects_unsafe_doppler_workflow_targets() {
   local case_root manifest workflow out rc
-  for case_root in owned hosted indeterminate quoted fork override; do
+  for case_root in owned hosted indeterminate quoted fork unknown-trigger override; do
     case_root="$TMP_ROOT/workflow-$case_root"
     mkdir -p "$case_root/docs" "$case_root/.github/workflows"
     cp "$EXAMPLE" "$case_root/docs/secrets-policy.json"
     manifest="$case_root/docs/secrets-policy.json"
     workflow="$case_root/.github/workflows/deploy.yml"
-    workflow_trigger=''
+    workflow_trigger=$'on:\n  push:\n  workflow_dispatch:'
     case "$case_root" in
       *owned)
         runner='[self-hosted, Linux, X64, fleet-ci]'
@@ -395,6 +412,11 @@ with open(sys.argv[1], "w", encoding="utf-8") as fh:
     fh.write("\n")
 PY
         ;;
+      *unknown-trigger)
+        runner='[self-hosted, Linux, X64, fleet-ci]'
+        job_key='deploy'
+        workflow_trigger=''
+        ;;
       *)
         runner='ubuntu-latest'
         job_key='deploy'
@@ -433,16 +455,16 @@ EOF
     git -C "$case_root" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm workflow
     rc=0
     out=$("$CHECK" inventory "$case_root" 2>&1) || rc=$?
-    if [ "$case_root" = "$TMP_ROOT/workflow-owned" ] || [ "$case_root" = "$TMP_ROOT/workflow-override" ]; then
-      [ "$rc" -eq 0 ] || fail "inventory rejected the exact documented workflow override"$'\n'"$out"
-      assert_contains "$out" "doppler_refs=true" "inventory did not inspect the overridden workflow"
+    if [ "$case_root" = "$TMP_ROOT/workflow-owned" ]; then
+      [ "$rc" -eq 0 ] || fail "inventory rejected the positively proven owned workflow"$'\n'"$out"
+      assert_contains "$out" "doppler_refs=true" "inventory did not inspect the owned workflow"
     else
       [ "$rc" -ne 0 ] || fail "inventory accepted unsafe workflow target: $case_root"
       if [ "$case_root" = "$TMP_ROOT/workflow-quoted" ]; then
         assert_contains "$out" "Doppler references" \
           "inventory did not reject the ambiguous quoted job structure"
       elif [ "$case_root" = "$TMP_ROOT/workflow-fork" ]; then
-        assert_contains "$out" "fork-exposed workflows" \
+        assert_contains "$out" "trigger=fork-originated" \
           "inventory did not enforce the fork-exposure override wall"
       else
         assert_contains "$out" "Doppler injection requires" \

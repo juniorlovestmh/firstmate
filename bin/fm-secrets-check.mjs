@@ -533,21 +533,7 @@ function validateManifestSemantics(doc, label, today = policyToday()) {
       );
     }
     if (secretBearingIdentity && !ownedRunner) {
-      const override = Array.isArray(doc.exceptions)
-        ? doc.exceptions.find(
-            (exception) =>
-              exception?.kind === "non-owned-runner-doppler" &&
-              nonEmptyString(exception.workflow) &&
-              nonEmptyString(exception.reason) &&
-              !overrideUnavailable,
-          )
-        : null;
-      if (!override) {
-        add(
-          "ci.runner",
-          "Doppler secret injection requires an owned runner or a documented non-owned-runner-doppler workflow override",
-        );
-      }
+      add("ci.runner", "Doppler secret injection requires an owned runner");
     }
   }
 
@@ -566,13 +552,60 @@ const ownedWorkflowTargets = new Set([
   "[self-hosted, macOS, ARM64, fleet-ci]",
 ]);
 
-function workflowCanReceiveFork(content) {
+function dopplerWorkflowPermitted({ runner, triggerTrust, repositoryVisibility, forkExposure }) {
   return (
-    /^  (?:pull_request|pull_request_target):\s*/m.test(content) ||
-    /^on:\s*(?:\[[^\]]*\b(?:pull_request|pull_request_target)\b[^\]]*\]|(?:pull_request|pull_request_target))\s*$/m.test(
-      content,
-    )
+    ownedWorkflowTargets.has(runner) &&
+    triggerTrust === "trusted-only" &&
+    repositoryVisibility === "private" &&
+    forkExposure === "none"
   );
+}
+
+function workflowTriggerTrust(content) {
+  const lines = content.split(/\r?\n/);
+  const onIndex = lines.findIndex((line) => /^on:\s*/.test(line));
+  if (onIndex === -1) {
+    return "unknown";
+  }
+  const inline = lines[onIndex].replace(/^on:\s*/, "").trim();
+  const allowed = new Set(["push", "workflow_dispatch"]);
+  const forkEvents = new Set(["pull_request", "pull_request_target"]);
+  const classify = (events) => {
+    if (events.some((event) => forkEvents.has(event))) {
+      return "fork-originated";
+    }
+    return events.length > 0 && events.every((event) => allowed.has(event))
+      ? "trusted-only"
+      : "unknown";
+  };
+  if (inline) {
+    if (inline.startsWith("[") && inline.endsWith("]")) {
+      return classify(
+        inline
+          .slice(1, -1)
+          .split(",")
+          .map((event) => event.trim().replace(/^['\"]|['\"]$/g, ""))
+          .filter(Boolean),
+      );
+    }
+    return classify([inline.replace(/^['\"]|['\"]$/g, "")]);
+  }
+  const events = [];
+  for (let index = onIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^\S/.test(line) && line.trim() !== "") {
+      break;
+    }
+    if (line.trim() === "" || /^\s*#/.test(line)) {
+      continue;
+    }
+    const event = /^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$/.exec(line);
+    if (!event) {
+      return "unknown";
+    }
+    events.push(event[1]);
+  }
+  return classify(events);
 }
 
 function workflowJobs(content) {
@@ -631,23 +664,7 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
       return;
     }
     let injectingJobs = 0;
-    const forkExposed = workflowCanReceiveFork(content);
-    const hostedException = Array.isArray(manifest?.exceptions)
-      ? manifest.exceptions.some((exception) => exception?.kind === "hosted-runner")
-      : false;
-    const overrideUnavailable =
-      manifest?.repositoryVisibility !== "private" ||
-      manifest?.forkExposure !== "none" ||
-      hostedException ||
-      forkExposed;
-    if (
-      forkExposed &&
-      Array.isArray(manifest?.exceptions) &&
-      manifest.exceptions.some((exception) => exception?.kind === "non-owned-runner-doppler")
-    ) {
-      fail(`${projectLabel}/${workflowFile}: fork-exposed workflows cannot use a non-owned-runner-doppler override`);
-      return;
-    }
+    const triggerTrust = workflowTriggerTrust(content);
     parsed.jobs.forEach((job) => {
       const jobText = job.lines.join("\n");
       const usesDoppler = /uses:\s*dopplerhq\/secrets-fetch-action@/.test(jobText);
@@ -660,19 +677,16 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
 
       const runnerMatches = job.lines.filter((line) => /^    runs-on:\s*/.test(line));
       const runner = runnerMatches.length === 1 ? runnerMatches[0].replace(/^    runs-on:\s*/, "").trim() : null;
-      const owned = runner !== null && ownedWorkflowTargets.has(runner);
-      const override = Array.isArray(manifest?.exceptions)
-        ? manifest.exceptions.find(
-            (exception) =>
-              exception?.kind === "non-owned-runner-doppler" &&
-              exception.workflow === workflowFile &&
-              nonEmptyString(exception.reason) &&
-              !overrideUnavailable,
-          )
-        : null;
-      if (!owned && !override) {
+      if (
+        !dopplerWorkflowPermitted({
+          runner,
+          triggerTrust,
+          repositoryVisibility: manifest?.repositoryVisibility,
+          forkExposure: manifest?.forkExposure,
+        })
+      ) {
         fail(
-          `${projectLabel}/${workflowFile} job ${job.name}: Doppler injection requires an exact owned runner target or matching non-owned-runner-doppler override`,
+          `${projectLabel}/${workflowFile} job ${job.name}: Doppler injection requires an owned runner, trusted-only trigger, private repository, and no fork exposure (runner=${runner ?? "unknown"} trigger=${triggerTrust} visibility=${manifest?.repositoryVisibility ?? "unknown"} forkExposure=${manifest?.forkExposure ?? "unknown"})`,
         );
       }
     });
