@@ -383,7 +383,7 @@ test_inventory_rejects_unsafe_doppler_workflow_targets() {
         job_key='deploy'
         ;;
       *indeterminate)
-        runner='${{ matrix.runner }}'
+        runner="\${{ matrix.runner }}"
         job_key='deploy'
         ;;
       *quoted)
