@@ -1,0 +1,33 @@
+# Optional paid-plan reference only; this is not the shipped default.
+# DOPPLER_SERVICE_IDENTITY_ID is a non-secret GitHub Environment variable.
+# Use only after the captain approves the plan and a separate OIDC migration.
+# Bind the identity to this repository, environment, workflow, and self-hosted
+# runner claim with exact values before enabling the job.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Linux, X64, fleet-ci]
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out trusted repository code before secret injection
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Exchange the GitHub job identity and fetch masked Doppler secrets
+        id: doppler
+        uses: dopplerhq/secrets-fetch-action@cd2efbf9a404504316435873eff298b82f7e0562 # v1.3.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: example-service
+          doppler-config: stg
+          inject-env-vars: true
+
+      - name: Run the only command that consumes the injected values
+        shell: bash
+        run: ./scripts/deploy.sh

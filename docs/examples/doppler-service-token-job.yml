@@ -1,0 +1,26 @@
+# Current-plan job template.
+# DOPPLER_TOKEN is a GitHub Environment secret containing one read-only Doppler
+# service token scoped to the exact project config used by this job.
+# Do not move it to workflow env, job env, runner service env, or runner home.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Linux, X64, fleet-ci]
+    environment: staging
+    steps:
+      - name: Check out trusted repository code before secret injection
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Fetch and mask Doppler secrets for this job
+        id: doppler
+        uses: dopplerhq/secrets-fetch-action@cd2efbf9a404504316435873eff298b82f7e0562 # v1.3.0
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          inject-env-vars: true
+
+      - name: Run the only command that consumes the injected values
+        shell: bash
+        run: ./scripts/deploy.sh
