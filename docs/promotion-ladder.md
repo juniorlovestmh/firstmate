@@ -37,8 +37,9 @@ The exception ends as soon as the project gains a deployable app or persistent c
 
 ## Secrets separation
 
-Each environment's secrets and config stay separate: dev/preview, staging, and production never share a secret set or a data store.
-Use Doppler where the project has adopted it; use the platform's native secret store otherwise (GitHub Environments secrets, `wrangler secret`, OpenTofu's provider-native secret backend, and so on).
+Production secrets and data stay isolated from every non-production environment.
+Preview may share a staging secret set only when it is isolated from production data and the project manifest documents that choice.
+The [Firstmate secrets-management policy](../.agents/skills/secrets-management/SKILL.md) owns the secretless-identity preference, Doppler default, platform-mandated exceptions, and per-job injection contract.
 No secret value ever lands in the repo, in a committed `tfvars`/`wrangler.toml`, or in a workflow file.
 
 ## Smoke gate
@@ -68,7 +69,7 @@ Auto-apply staging's plan on merge to `staging`; promote the reviewed configurat
 Never apply a staging plan artifact to production or apply a fresh unreviewed plan.
 Inject variables and secrets via Doppler or the cloud provider's native secret store, never as committed `tfvars`.
 
-**GitHub Actions deploy jobs** - use GitHub Environments (`staging`, `production`) with environment-scoped secrets.
+**GitHub Actions deploy jobs** - use GitHub Environments (`staging`, `production`) for approvals and the environment-scoped identity declared by the secrets-management policy.
 Give the `production` environment required reviewers where the reviewed `staging`-to-`main` PR is not itself the platform's approval gate.
 Run the `staging` deploy job automatically on push to `staging`, and run production only after explicit promotion to `main`.
 

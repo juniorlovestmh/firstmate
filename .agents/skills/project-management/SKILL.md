@@ -3,7 +3,7 @@ name: project-management
 description: >-
   Agent-only procedure for Firstmate project management.
   Use before adding, creating, removing, or initializing a project.
-  Owns project add, create, clone, remove, initialization, registry, delivery-mode, autonomy, and outward-consent decisions.
+  Owns project add, create, clone, remove, initialization, registry, delivery-mode, autonomy, outward-consent decisions, and the secrets-intake handoff.
 user-invocable: false
 metadata:
   internal: true
@@ -67,6 +67,12 @@ cd projects/<name> && no-mistakes init && no-mistakes doctor
 Initialization configures the local gate and does not vendor a no-mistakes skill into the project.
 Do not create a commit merely because initialization ran.
 If doctor reports an environment, authentication, or daemon problem, resolve that blocker before dispatching work and never restart the shared daemon from a project operation.
+
+Load `secrets-management` during every project intake or initialization.
+From the Firstmate root, run `bin/fm-secrets-check.sh inventory projects/<name>` after the gate check.
+The inventory is read-only and value-safe, and it is not a substitute for the declared project classification.
+If the project lacks `docs/secrets-policy.json`, assign its first ship task to copy and complete `docs/examples/project-secrets-policy.json` before any secret-bearing workflow or deployment change.
+Firstmate never hand-writes that project file.
 
 ## Remove
 
