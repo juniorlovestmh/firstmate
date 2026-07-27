@@ -333,21 +333,32 @@ PY
 
 test_inventory_rejects_unsafe_doppler_workflow_targets() {
   local case_root manifest workflow out rc
-  for case_root in hosted indeterminate override; do
+  for case_root in owned hosted indeterminate quoted override; do
     case_root="$TMP_ROOT/workflow-$case_root"
     mkdir -p "$case_root/docs" "$case_root/.github/workflows"
     cp "$EXAMPLE" "$case_root/docs/secrets-policy.json"
     manifest="$case_root/docs/secrets-policy.json"
     workflow="$case_root/.github/workflows/deploy.yml"
     case "$case_root" in
+      *owned)
+        runner='[self-hosted, Linux, X64, fleet-ci]'
+        job_key='deploy'
+        ;;
       *hosted)
         runner='ubuntu-latest'
+        job_key='deploy'
         ;;
       *indeterminate)
         runner='${{ matrix.runner }}'
+        job_key='deploy'
+        ;;
+      *quoted)
+        runner='[self-hosted, Linux, X64, fleet-ci]'
+        job_key='"deploy"'
         ;;
       *)
         runner='ubuntu-latest'
+        job_key='deploy'
         python3 - "$manifest" <<'PY'
 import json
 import sys
@@ -369,7 +380,7 @@ PY
     esac
     cat >"$workflow" <<EOF
 jobs:
-  deploy:
+  $job_key:
     runs-on: $runner
     steps:
       - uses: dopplerhq/secrets-fetch-action@example
@@ -382,13 +393,18 @@ EOF
     git -C "$case_root" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm workflow
     rc=0
     out=$("$CHECK" inventory "$case_root" 2>&1) || rc=$?
-    if [ "$case_root" = "$TMP_ROOT/workflow-override" ]; then
+    if [ "$case_root" = "$TMP_ROOT/workflow-owned" ] || [ "$case_root" = "$TMP_ROOT/workflow-override" ]; then
       [ "$rc" -eq 0 ] || fail "inventory rejected the exact documented workflow override"$'\n'"$out"
       assert_contains "$out" "doppler_refs=true" "inventory did not inspect the overridden workflow"
     else
       [ "$rc" -ne 0 ] || fail "inventory accepted unsafe workflow target: $case_root"
-      assert_contains "$out" "Doppler injection requires" \
-        "inventory did not report the unsafe workflow target: $case_root"
+      if [ "$case_root" = "$TMP_ROOT/workflow-quoted" ]; then
+        assert_contains "$out" "Doppler references" \
+          "inventory did not reject the ambiguous quoted job structure"
+      else
+        assert_contains "$out" "Doppler injection requires" \
+          "inventory did not report the unsafe workflow target: $case_root"
+      fi
     fi
   done
   pass "inventory rejects hosted and indeterminate Doppler workflow targets"

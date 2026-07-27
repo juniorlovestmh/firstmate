@@ -548,6 +548,7 @@ const ownedWorkflowTargets = new Set([
 function workflowJobs(content) {
   const lines = content.split(/\r?\n/);
   const jobs = [];
+  const structuralErrors = [];
   let inJobs = false;
   let current = null;
   lines.forEach((line) => {
@@ -558,13 +559,22 @@ function workflowJobs(content) {
     if (!inJobs) {
       return;
     }
+    if (line.trim() === "" || /^\s*#/.test(line)) {
+      return;
+    }
     const jobMatch = /^  ([A-Za-z0-9_-]+):\s*$/.exec(line);
     if (jobMatch) {
       current = { name: jobMatch[1], lines: [] };
       jobs.push(current);
       return;
     }
-    if (current && /^  \S/.test(line)) {
+    if (/^\S/.test(line)) {
+      inJobs = false;
+      current = null;
+      return;
+    }
+    if (/^  \S/.test(line)) {
+      structuralErrors.push(line.trim());
       current = null;
       return;
     }
@@ -572,7 +582,7 @@ function workflowJobs(content) {
       current.lines.push(line);
     }
   });
-  return jobs;
+  return { jobs, structuralErrors };
 }
 
 function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectLabel) {
@@ -581,7 +591,17 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
     if (content === null) {
       return;
     }
-    workflowJobs(content).forEach((job) => {
+    const parsed = workflowJobs(content);
+    const hasDopplerReference =
+      /dopplerhq\/secrets-fetch-action@|doppler-token:\s*|auth-method:\s*oidc\b/.test(content);
+    if (hasDopplerReference && (parsed.jobs.length === 0 || parsed.structuralErrors.length > 0)) {
+      fail(
+        `${projectLabel}/${workflowFile}: Doppler references require an unambiguous parsed jobs structure`,
+      );
+      return;
+    }
+    let injectingJobs = 0;
+    parsed.jobs.forEach((job) => {
       const jobText = job.lines.join("\n");
       const usesDoppler = /uses:\s*dopplerhq\/secrets-fetch-action@/.test(jobText);
       const usesServiceToken = /doppler-token:\s*\$\{\{\s*secrets\.[^}]+\}\}/.test(jobText);
@@ -589,6 +609,7 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
       if (!usesDoppler || (!usesServiceToken && !usesOidc)) {
         return;
       }
+      injectingJobs += 1;
 
       const runnerMatches = job.lines.filter((line) => /^    runs-on:\s*/.test(line));
       const runner = runnerMatches.length === 1 ? runnerMatches[0].replace(/^    runs-on:\s*/, "").trim() : null;
@@ -607,6 +628,9 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
         );
       }
     });
+    if (hasDopplerReference && injectingJobs === 0) {
+      fail(`${projectLabel}/${workflowFile}: Doppler references were not confined to a parsed injecting job`);
+    }
   });
 }
 

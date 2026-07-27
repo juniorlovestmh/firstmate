@@ -94,7 +94,7 @@ Never expose Doppler or provider credentials to pull requests from forks, Depend
 The sanctioned `waku-agent` hosted-runner exception remains documented because it is a public fork whose untrusted pull requests must not run on captain-owned hardware.
 That runner exception does not authorize secrets on untrusted events.
 
-Secret-bearing Doppler identities are refused on non-owned runners by the checker. A future exceptional workflow must use the explicitly named `non-owned-runner-doppler` exception with a workflow identifier and non-empty reason; the `hosted-runner` exception never authorizes this boundary crossing.
+Secret-bearing Doppler identities are refused on non-owned runners by the checker. Workflow validation is refuse-unless-provably-owned: parser uncertainty, quoted or ambiguous job structure, missing or computed `runs-on`, unknown labels, and indirection all fail closed. A future exceptional workflow must use the explicitly named `non-owned-runner-doppler` exception with a workflow identifier and non-empty reason; the `hosted-runner` exception never authorizes this boundary crossing.
 
 ## Captain decision record for optional Doppler OIDC
 
