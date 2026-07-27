@@ -30,6 +30,8 @@ jobs:
       # and the pre-push gate on this script so a self-broken ci.yml still
       # fails locally before merge.
       - run: bin/fm-lint.sh
+      - name: Validate tracked secrets standard
+        run: bin/fm-secrets-check.sh
 
   # Deterministic proof that portable parallel shards + portable serial + Herdr
   # equal the complete tests/*.test.sh inventory with no missing or duplicates,
