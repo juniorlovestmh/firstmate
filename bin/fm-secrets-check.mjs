@@ -65,6 +65,7 @@ const allowedExceptions = new Set([
   "hosted-runner",
   "shared-nonproduction-config",
   "temporary-migration",
+  "non-owned-runner-doppler",
 ]);
 const canonicalConfigs = new Set(["dev", "stg", "prd"]);
 const expectedBacklogIds = [
@@ -94,6 +95,21 @@ function readJson(file) {
 
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function parseIsoDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+  if (!match) {
+    return null;
+  }
+  const timestamp = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const date = new Date(timestamp);
+  return date.toISOString().slice(0, 10) === value ? date : null;
+}
+
+function policyToday() {
+  const override = process.env.FM_SECRETS_CHECK_TODAY;
+  return parseIsoDate(override) || new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
 }
 
 function validateSchemaDocument(file, expectedTitle) {
@@ -432,12 +448,26 @@ function validateManifestSemantics(doc, label) {
         add(`exceptions[${index}].reason`, "must be a non-empty string");
       }
       if (exception.kind === "temporary-migration") {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(exception.reviewBy || "")) {
+        const reviewDate = parseIsoDate(exception.reviewBy);
+        if (!reviewDate) {
           add(`exceptions[${index}].reviewBy`, "must be a YYYY-MM-DD date");
+        } else {
+          const today = policyToday();
+          const latestReview = new Date(today);
+          latestReview.setUTCDate(latestReview.getUTCDate() + 90);
+          if (reviewDate < today || reviewDate > latestReview) {
+            add(
+              `exceptions[${index}].reviewBy`,
+              "must be today or within the next 90 days",
+            );
+          }
         }
         if (!nonEmptyString(exception.removalCondition)) {
           add(`exceptions[${index}].removalCondition`, "must be a non-empty string");
         }
+      }
+      if (exception.kind === "non-owned-runner-doppler" && !nonEmptyString(exception.workflow)) {
+        add(`exceptions[${index}].workflow`, "must identify the exceptional workflow");
       }
     });
     if (
@@ -480,6 +510,25 @@ function validateManifestSemantics(doc, label) {
     ]).get(doc.ci.identity);
     if (expectedInjection && doc.ci.injection !== expectedInjection) {
       add("ci.injection", `must be ${expectedInjection} for identity ${doc.ci.identity}`);
+    }
+    const secretBearingIdentity =
+      doc.ci.identity === "doppler-service-token" || doc.ci.identity === "doppler-oidc";
+    const ownedRunner = doc.ci.runner === "owned-linux" || doc.ci.runner === "owned-macos";
+    if (secretBearingIdentity && !ownedRunner) {
+      const override = Array.isArray(doc.exceptions)
+        ? doc.exceptions.find(
+            (exception) =>
+              exception?.kind === "non-owned-runner-doppler" &&
+              nonEmptyString(exception.workflow) &&
+              nonEmptyString(exception.reason),
+          )
+        : null;
+      if (!override) {
+        add(
+          "ci.runner",
+          "Doppler secret injection requires an owned runner or a documented non-owned-runner-doppler workflow override",
+        );
+      }
     }
   }
 

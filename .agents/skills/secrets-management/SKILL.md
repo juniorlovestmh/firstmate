@@ -94,6 +94,8 @@ Never expose Doppler or provider credentials to pull requests from forks, Depend
 The sanctioned `waku-agent` hosted-runner exception remains documented because it is a public fork whose untrusted pull requests must not run on captain-owned hardware.
 That runner exception does not authorize secrets on untrusted events.
 
+Secret-bearing Doppler identities are refused on non-owned runners by the checker. A future exceptional workflow must use the explicitly named `non-owned-runner-doppler` exception with a workflow identifier and non-empty reason; the `hosted-runner` exception never authorizes this boundary crossing.
+
 ## Captain decision record for optional Doppler OIDC
 
 The 2026-07-27 owned-runner pilot proves that GitHub job OIDC works from the fleet runner and that the runner can keep its host environment credential-free.
@@ -202,6 +204,7 @@ Allowed exception kinds are:
 - `hosted-runner` for the named public-fork safety exception.
 - `shared-nonproduction-config` for an isolated preview that intentionally shares `stg`, never production data.
 - `temporary-migration` for a time-bounded incompatibility with an explicit removal step.
+- `non-owned-runner-doppler` only for a named workflow that has a documented reason to inject Doppler secrets on a non-owned runner.
 
 Every `temporary-migration` exception records a `reviewBy` date no more than 90 days away and a non-empty `removalCondition`.
 Cost, convenience, an existing unscoped token, or a token already present on a machine is not a valid exception.
