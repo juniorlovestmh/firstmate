@@ -108,8 +108,7 @@ function parseIsoDate(value) {
 }
 
 function policyToday() {
-  const override = process.env.FM_SECRETS_CHECK_TODAY;
-  return parseIsoDate(override) || new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  return new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
 }
 
 function validateSchemaDocument(file, expectedTitle) {
@@ -361,7 +360,7 @@ function validateAgainstSchema(doc, schemaFile, label) {
   return validateSchemaValue(doc, schema, schemaFile).map((error) => `${label}: ${error}`);
 }
 
-function validateManifestSemantics(doc, label) {
+function validateManifestSemantics(doc, label, today = policyToday()) {
   const errors = [];
   const add = (field, message) => errors.push(`${label}: ${field} ${message}`);
 
@@ -452,7 +451,6 @@ function validateManifestSemantics(doc, label) {
         if (!reviewDate) {
           add(`exceptions[${index}].reviewBy`, "must be a YYYY-MM-DD date");
         } else {
-          const today = policyToday();
           const latestReview = new Date(today);
           latestReview.setUTCDate(latestReview.getUTCDate() + 90);
           if (reviewDate < today || reviewDate > latestReview) {
@@ -540,6 +538,76 @@ function validateManifest(doc, label) {
     ...validateAgainstSchema(doc, policySchema, label),
     ...validateManifestSemantics(doc, label),
   ];
+}
+
+const ownedWorkflowTargets = new Set([
+  "[self-hosted, Linux, X64, fleet-ci]",
+  "[self-hosted, macOS, ARM64, fleet-ci]",
+]);
+
+function workflowJobs(content) {
+  const lines = content.split(/\r?\n/);
+  const jobs = [];
+  let inJobs = false;
+  let current = null;
+  lines.forEach((line) => {
+    if (/^jobs:\s*$/.test(line)) {
+      inJobs = true;
+      return;
+    }
+    if (!inJobs) {
+      return;
+    }
+    const jobMatch = /^  ([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (jobMatch) {
+      current = { name: jobMatch[1], lines: [] };
+      jobs.push(current);
+      return;
+    }
+    if (current && /^  \S/.test(line)) {
+      current = null;
+      return;
+    }
+    if (current) {
+      current.lines.push(line);
+    }
+  });
+  return jobs;
+}
+
+function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectLabel) {
+  workflowFiles.forEach((workflowFile) => {
+    const content = readTracked(workflowFile);
+    if (content === null) {
+      return;
+    }
+    workflowJobs(content).forEach((job) => {
+      const jobText = job.lines.join("\n");
+      const usesDoppler = /uses:\s*dopplerhq\/secrets-fetch-action@/.test(jobText);
+      const usesServiceToken = /doppler-token:\s*\$\{\{\s*secrets\.[^}]+\}\}/.test(jobText);
+      const usesOidc = /auth-method:\s*oidc\b/.test(jobText);
+      if (!usesDoppler || (!usesServiceToken && !usesOidc)) {
+        return;
+      }
+
+      const runnerMatches = job.lines.filter((line) => /^    runs-on:\s*/.test(line));
+      const runner = runnerMatches.length === 1 ? runnerMatches[0].replace(/^    runs-on:\s*/, "").trim() : null;
+      const owned = runner !== null && ownedWorkflowTargets.has(runner);
+      const override = Array.isArray(manifest?.exceptions)
+        ? manifest.exceptions.find(
+            (exception) =>
+              exception?.kind === "non-owned-runner-doppler" &&
+              exception.workflow === workflowFile &&
+              nonEmptyString(exception.reason),
+          )
+        : null;
+      if (!owned && !override) {
+        fail(
+          `${projectLabel}/${workflowFile} job ${job.name}: Doppler injection requires an exact owned runner target or matching non-owned-runner-doppler override`,
+        );
+      }
+    });
+  });
 }
 
 function validateRollout() {
@@ -764,11 +832,12 @@ function validateStandard() {
   }
 }
 
-function validateOneManifest(file) {
+function validateOneManifest(file, today = policyToday()) {
   const resolved = path.resolve(file);
   const doc = readJson(resolved);
   if (doc) {
-    validateManifest(doc, resolved).forEach(fail);
+    validateManifestSemantics(doc, resolved, today).forEach(fail);
+    validateAgainstSchema(doc, policySchema, resolved).forEach(fail);
     scanFile(resolved);
   }
   if (!process.exitCode) {
@@ -794,25 +863,38 @@ function inventoryProject(directory) {
   let doppler = false;
   let secretContext = false;
   let oidc = false;
-  files.forEach((file) => {
-    if (doppler && secretContext && oidc) {
-      return;
-    }
-    let content;
+  const readTracked = (file) => {
     try {
-      content = execFileSync("git", ["-C", resolved, "show", `HEAD:${file}`], {
+      return execFileSync("git", ["-C", resolved, "show", `HEAD:${file}`], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         maxBuffer: 4 * 1024 * 1024,
       });
     } catch {
+      return null;
+    }
+  };
+  files.forEach((file) => {
+    if (doppler && secretContext && oidc) {
       return;
     }
+    const content = readTracked(file);
+    if (content === null) return;
     doppler ||= /doppler/i.test(content);
     secretContext ||= /\bsecrets\.[A-Za-z_][A-Za-z0-9_]*/.test(content);
     oidc ||= /id-token|workload_identity|oidc/i.test(content);
   });
-  const manifest = files.includes("docs/secrets-policy.json") ? "present" : "absent";
+  let manifestDoc = null;
+  if (files.includes("docs/secrets-policy.json")) {
+    try {
+      manifestDoc = JSON.parse(readTracked("docs/secrets-policy.json"));
+      validateManifest(manifestDoc, `${resolved}/docs/secrets-policy.json`).forEach(fail);
+    } catch (error) {
+      fail(`${resolved}/docs/secrets-policy.json: invalid JSON: ${error.message}`);
+    }
+  }
+  validateTrackedWorkflows(workflowFiles, readTracked, manifestDoc, resolved);
+  const manifest = manifestDoc ? "present" : "absent";
   process.stdout.write(
     `secrets-inventory: project=${path.basename(resolved)} workflows=${workflowFiles.length} doppler_refs=${doppler} secret_refs=${secretContext} oidc_refs=${oidc} manifest=${manifest}\n`,
   );
@@ -832,6 +914,18 @@ switch (command) {
       fail("manifest requires exactly one path");
     } else {
       validateOneManifest(args[0]);
+    }
+    break;
+  case "test-manifest-fixture":
+    if (args.length !== 2) {
+      fail("test-manifest-fixture requires a manifest path and fixed YYYY-MM-DD date");
+    } else {
+      const today = parseIsoDate(args[1]);
+      if (!today) {
+        fail("test-manifest-fixture requires a valid fixed YYYY-MM-DD date");
+      } else {
+        validateOneManifest(args[0], today);
+      }
     }
     break;
   case "inventory":

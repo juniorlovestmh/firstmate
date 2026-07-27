@@ -6,6 +6,7 @@
 #   fm-secrets-check.sh
 #   fm-secrets-check.sh standard
 #   fm-secrets-check.sh manifest <docs/secrets-policy.json>
+#   fm-secrets-check.sh test-manifest-fixture <manifest> <YYYY-MM-DD>
 #   fm-secrets-check.sh inventory <project-dir>
 #   fm-secrets-check.sh leak-scan <path> [path...]
 #   fm-secrets-check.sh --help
@@ -18,8 +19,9 @@
 # contract represented by docs/secrets-policy.schema.json.
 #
 # "inventory" is a read-only project-intake helper. It reads git-tracked
-# filenames and classifies Doppler, GitHub secret-context, and OIDC references.
-# It never reads untracked files and never prints matched source lines.
+# filenames, classifies Doppler, GitHub secret-context, and OIDC references,
+# and rejects unsafe Doppler workflow runner targets. It never reads untracked
+# files and never prints matched source lines.
 #
 # "leak-scan" reports only "<path>:<line>: <rule>"; matching text is never
 # echoed. It is intentionally high-confidence and complements, rather than

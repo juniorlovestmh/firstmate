@@ -212,7 +212,9 @@ Cost, convenience, an existing unscoped token, or a token already present on a m
 ## Project intake and migration
 
 During project intake, run `bin/fm-secrets-check.sh inventory <project-dir>`.
-The inventory reads tracked filenames and reference classes only.
+The inventory reads tracked filenames and reference classes, and rejects Doppler
+workflow injection whose runner target is not statically owned or explicitly
+covered by the exact documented workflow override.
 It never reads untracked environment files or prints matched lines.
 
 If `docs/secrets-policy.json` is absent, the first project ship copies `docs/examples/project-secrets-policy.json` from Firstmate, replaces the example fields, and validates it.
