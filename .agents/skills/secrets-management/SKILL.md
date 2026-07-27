@@ -96,6 +96,7 @@ That runner exception does not authorize secrets on untrusted events.
 
 Doppler injection is permitted only when the runner target is provably owned AND the triggering event is provably not fork-originated AND the repository exposure cannot admit an untrusted trigger; unknown on ANY axis refuses; no override unlocks the fork or public axes.
 Workflow validation is refuse-unless-provable: parser uncertainty, quoted or ambiguous job structure, missing or computed `runs-on`, unknown labels, missing or ambiguous triggers, and indirection all fail closed. The `repositoryVisibility` and `forkExposure` policy fields are explicit walls, and a `hosted-runner` or `non-owned-runner-doppler` exception never changes a false permission result.
+Workflow intake is two-phase: enumerate the complete authoritative tracked workflow set first, then record exactly one `permit-with-proof` or `refuse` verdict for every enumerated workflow; unreadable or unavailable content refuses, and any missing, duplicate, or extra verdict fails validation.
 
 ## Captain decision record for optional Doppler OIDC
 
@@ -214,8 +215,7 @@ Cost, convenience, an existing unscoped token, or a token already present on a m
 
 During project intake, run `bin/fm-secrets-check.sh inventory <project-dir>`.
 The inventory reads tracked filenames and reference classes, and rejects Doppler
-workflow injection whose runner target is not statically owned or explicitly
-covered by the exact documented workflow override.
+workflow injection unless the complete three-axis predicate is proven.
 It never reads untracked environment files or prints matched lines.
 
 If `docs/secrets-policy.json` is absent, the first project ship copies `docs/examples/project-secrets-policy.json` from Firstmate, replaces the example fields, and validates it.

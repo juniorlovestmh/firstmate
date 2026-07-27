@@ -649,21 +649,38 @@ function workflowJobs(content) {
 }
 
 function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectLabel) {
+  const verdicts = [];
+  const verdictNames = new Set();
+  const recordVerdict = (workflowFile, verdict) => {
+    if (verdict !== "permit-with-proof" && verdict !== "refuse") {
+      fail(`${projectLabel}/${workflowFile}: invalid workflow validation verdict`);
+    }
+    if (verdictNames.has(workflowFile)) {
+      fail(`${projectLabel}/${workflowFile}: duplicate workflow validation verdict`);
+    }
+    verdictNames.add(workflowFile);
+    verdicts.push({ workflowFile, verdict });
+  };
+
   workflowFiles.forEach((workflowFile) => {
     const content = readTracked(workflowFile);
     if (content === null) {
+      fail(`${projectLabel}/${workflowFile}: tracked workflow is unavailable for validation`);
+      recordVerdict(workflowFile, "refuse");
       return;
     }
     const parsed = workflowJobs(content);
     const hasDopplerReference =
       /dopplerhq\/secrets-fetch-action@|doppler-token:\s*|auth-method:\s*oidc\b/.test(content);
-    if (hasDopplerReference && (parsed.jobs.length === 0 || parsed.structuralErrors.length > 0)) {
+    if (parsed.jobs.length === 0 || parsed.structuralErrors.length > 0) {
       fail(
-        `${projectLabel}/${workflowFile}: Doppler references require an unambiguous parsed jobs structure`,
+        `${projectLabel}/${workflowFile}: workflow requires an unambiguous parsed jobs structure`,
       );
+      recordVerdict(workflowFile, "refuse");
       return;
     }
     let injectingJobs = 0;
+    let permitted = true;
     const triggerTrust = workflowTriggerTrust(content);
     parsed.jobs.forEach((job) => {
       const jobText = job.lines.join("\n");
@@ -685,15 +702,32 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
           forkExposure: manifest?.forkExposure,
         })
       ) {
+        permitted = false;
         fail(
           `${projectLabel}/${workflowFile} job ${job.name}: Doppler injection requires an owned runner, trusted-only trigger, private repository, and no fork exposure (runner=${runner ?? "unknown"} trigger=${triggerTrust} visibility=${manifest?.repositoryVisibility ?? "unknown"} forkExposure=${manifest?.forkExposure ?? "unknown"})`,
         );
       }
     });
     if (hasDopplerReference && injectingJobs === 0) {
+      permitted = false;
       fail(`${projectLabel}/${workflowFile}: Doppler references were not confined to a parsed injecting job`);
     }
+    recordVerdict(workflowFile, permitted ? "permit-with-proof" : "refuse");
   });
+
+  const expectedNames = new Set(workflowFiles);
+  if (expectedNames.size !== workflowFiles.length) {
+    fail(`${projectLabel}: authoritative workflow enumeration contains duplicates`);
+  }
+  if (verdicts.length !== workflowFiles.length || verdictNames.size !== expectedNames.size) {
+    fail(`${projectLabel}: workflow validation verdict set is incomplete`);
+  }
+  expectedNames.forEach((workflowFile) => {
+    if (!verdictNames.has(workflowFile)) {
+      fail(`${projectLabel}/${workflowFile}: authoritative workflow has no validation verdict`);
+    }
+  });
+  return verdicts;
 }
 
 function validateRollout() {

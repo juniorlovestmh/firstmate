@@ -461,7 +461,7 @@ EOF
     else
       [ "$rc" -ne 0 ] || fail "inventory accepted unsafe workflow target: $case_root"
       if [ "$case_root" = "$TMP_ROOT/workflow-quoted" ]; then
-        assert_contains "$out" "Doppler references" \
+        assert_contains "$out" "workflow requires" \
           "inventory did not reject the ambiguous quoted job structure"
       elif [ "$case_root" = "$TMP_ROOT/workflow-fork" ]; then
         assert_contains "$out" "trigger=fork-originated" \
@@ -472,7 +472,27 @@ EOF
       fi
     fi
   done
-  pass "inventory rejects hosted and indeterminate Doppler workflow targets"
+
+  mkdir -p "$TMP_ROOT/not-a-git-worktree"
+  rc=0
+  out=$("$CHECK" inventory "$TMP_ROOT/not-a-git-worktree" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "inventory accepted a failed authoritative workflow enumeration"
+  assert_contains "$out" "requires a git worktree" "inventory did not fail authoritative enumeration loudly"
+
+  local unreadable="$TMP_ROOT/workflow-unreadable"
+  mkdir -p "$unreadable/docs" "$unreadable/.github/workflows"
+  cp "$EXAMPLE" "$unreadable/docs/secrets-policy.json"
+  fm_git_init_commit "$unreadable"
+  git -C "$unreadable" add docs/secrets-policy.json
+  git -C "$unreadable" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm policy
+  printf '%s\n' 'jobs:' '  deploy:' '    runs-on: [self-hosted, Linux, X64, fleet-ci]' > \
+    "$unreadable/.github/workflows/deploy.yml"
+  git -C "$unreadable" add .github/workflows/deploy.yml
+  rc=0
+  out=$("$CHECK" inventory "$unreadable" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "inventory accepted an unreadable tracked workflow"
+  assert_contains "$out" "unavailable for validation" "inventory did not fail unreadable workflow validation loudly"
+  pass "inventory completes workflow enumeration and records refusal verdicts"
 }
 
 test_value_leak_scan_reports_rule_not_value() {
