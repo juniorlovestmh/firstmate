@@ -375,6 +375,16 @@ test_inventory_rejects_unsafe_doppler_workflow_targets() {
     workflow_trigger=$'on:\n  push:\n  workflow_dispatch:'
     command=''
     case "$case_root" in
+      *cli-owned)
+        runner='[self-hosted, Linux, X64, fleet-ci]'
+        job_key='deploy'
+        command='doppler run -- ./scripts/deploy.sh'
+        ;;
+      *cli-hosted)
+        runner='ubuntu-latest'
+        job_key='deploy'
+        command='doppler run -- ./scripts/deploy.sh'
+        ;;
       *owned)
         runner='[self-hosted, Linux, X64, fleet-ci]'
         job_key='deploy'
@@ -417,16 +427,6 @@ PY
         runner='[self-hosted, Linux, X64, fleet-ci]'
         job_key='deploy'
         workflow_trigger=''
-        ;;
-      *cli-owned)
-        runner='[self-hosted, Linux, X64, fleet-ci]'
-        job_key='deploy'
-        command='doppler run -- ./scripts/deploy.sh'
-        ;;
-      *cli-hosted)
-        runner='ubuntu-latest'
-        job_key='deploy'
-        command='doppler run -- ./scripts/deploy.sh'
         ;;
       *)
         runner='ubuntu-latest'
