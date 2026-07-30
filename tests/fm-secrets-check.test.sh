@@ -428,6 +428,16 @@ PY
         job_key='deploy'
         workflow_trigger=''
         ;;
+      *cli-owned)
+        runner='[self-hosted, Linux, X64, fleet-ci]'
+        job_key='deploy'
+        command='doppler run -- ./scripts/deploy.sh'
+        ;;
+      *cli-hosted)
+        runner='ubuntu-latest'
+        job_key='deploy'
+        command='doppler run -- ./scripts/deploy.sh'
+        ;;
       *)
         runner='ubuntu-latest'
         job_key='deploy'
