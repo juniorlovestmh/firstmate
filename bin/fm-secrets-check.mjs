@@ -671,7 +671,7 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
     }
     const parsed = workflowJobs(content);
     const hasDopplerReference =
-      /dopplerhq\/secrets-fetch-action@|doppler-token:\s*|auth-method:\s*oidc\b/.test(content);
+      /dopplerhq\/secrets-fetch-action@|doppler-token:\s*|auth-method:\s*oidc\b|\bdoppler\s+run\b/.test(content);
     if (parsed.jobs.length === 0 || parsed.structuralErrors.length > 0) {
       fail(
         `${projectLabel}/${workflowFile}: workflow requires an unambiguous parsed jobs structure`,
@@ -684,7 +684,8 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
     const triggerTrust = workflowTriggerTrust(content);
     parsed.jobs.forEach((job) => {
       const jobText = job.lines.join("\n");
-      const usesDoppler = /uses:\s*dopplerhq\/secrets-fetch-action@/.test(jobText);
+      const usesDoppler =
+        /uses:\s*dopplerhq\/secrets-fetch-action@/.test(jobText) || /\bdoppler\s+run\b/.test(jobText);
       const usesServiceToken = /doppler-token:\s*\$\{\{\s*secrets\.[^}]+\}\}/.test(jobText);
       const usesOidc = /auth-method:\s*oidc\b/.test(jobText);
       if (!usesDoppler || (!usesServiceToken && !usesOidc)) {

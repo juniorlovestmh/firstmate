@@ -365,14 +365,15 @@ PY
 }
 
 test_inventory_rejects_unsafe_doppler_workflow_targets() {
-  local case_root manifest workflow out rc
-  for case_root in owned hosted indeterminate quoted fork unknown-trigger override; do
+  local case_root manifest workflow out rc command
+  for case_root in owned hosted indeterminate quoted fork unknown-trigger override cli-owned cli-hosted; do
     case_root="$TMP_ROOT/workflow-$case_root"
     mkdir -p "$case_root/docs" "$case_root/.github/workflows"
     cp "$EXAMPLE" "$case_root/docs/secrets-policy.json"
     manifest="$case_root/docs/secrets-policy.json"
     workflow="$case_root/.github/workflows/deploy.yml"
     workflow_trigger=$'on:\n  push:\n  workflow_dispatch:'
+    command=''
     case "$case_root" in
       *owned)
         runner='[self-hosted, Linux, X64, fleet-ci]'
@@ -417,6 +418,16 @@ PY
         job_key='deploy'
         workflow_trigger=''
         ;;
+      *cli-owned)
+        runner='[self-hosted, Linux, X64, fleet-ci]'
+        job_key='deploy'
+        command='doppler run -- ./scripts/deploy.sh'
+        ;;
+      *cli-hosted)
+        runner='ubuntu-latest'
+        job_key='deploy'
+        command='doppler run -- ./scripts/deploy.sh'
+        ;;
       *)
         runner='ubuntu-latest'
         job_key='deploy'
@@ -439,7 +450,17 @@ with open(sys.argv[1], "w", encoding="utf-8") as fh:
 PY
         ;;
     esac
-    cat >"$workflow" <<EOF
+    if [ -n "$command" ]; then
+      cat >"$workflow" <<EOF
+${workflow_trigger:-}
+jobs:
+  $job_key:
+    runs-on: $runner
+    steps:
+      - run: $command
+EOF
+    else
+      cat >"$workflow" <<EOF
 ${workflow_trigger:-}
 jobs:
   $job_key:
@@ -450,12 +471,13 @@ jobs:
           doppler-token: \${{ secrets.DOPPLER_TOKEN }}
     inject-env-vars: true
 EOF
+    fi
     fm_git_init_commit "$case_root"
     git -C "$case_root" add docs/secrets-policy.json .github/workflows/deploy.yml
     git -C "$case_root" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm workflow
     rc=0
     out=$("$CHECK" inventory "$case_root" 2>&1) || rc=$?
-    if [ "$case_root" = "$TMP_ROOT/workflow-owned" ]; then
+    if [ "$case_root" = "$TMP_ROOT/workflow-owned" ] || [ "$case_root" = "$TMP_ROOT/workflow-cli-owned" ]; then
       [ "$rc" -eq 0 ] || fail "inventory rejected the positively proven owned workflow"$'\n'"$out"
       assert_contains "$out" "doppler_refs=true" "inventory did not inspect the owned workflow"
     else
