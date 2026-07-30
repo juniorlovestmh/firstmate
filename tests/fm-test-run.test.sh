@@ -513,22 +513,46 @@ exit 1
 SH
   cat >"$repo/$a" <<'SH'
 #!/usr/bin/env bash
-sleep 0.5
+touch "$SCHED_EVIDENCE/slow-started"
+attempt=0
+while [ ! -e "$SCHED_EVIDENCE/release-slow" ]; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 1000 ]; then
+    echo "not ok - slow fixture was never released"
+    exit 1
+  fi
+  sleep 0.01
+done
 touch "$SCHED_EVIDENCE/slow-done"
 echo "ok - slow fixture"
 SH
   cat >"$repo/$b" <<'SH'
 #!/usr/bin/env bash
-sleep 0.05
+attempt=0
+while [ ! -e "$SCHED_EVIDENCE/slow-started" ]; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 1000 ]; then
+    echo "not ok - slow fixture never started"
+    exit 1
+  fi
+  sleep 0.01
+done
 echo "ok - fast fixture"
 SH
   cat >"$repo/$c" <<'SH'
 #!/usr/bin/env bash
+if [ ! -e "$SCHED_EVIDENCE/slow-started" ]; then
+  touch "$SCHED_EVIDENCE/release-slow"
+  echo "not ok - replacement fixture started before both initial workers"
+  exit 1
+fi
 if [ -e "$SCHED_EVIDENCE/slow-done" ]; then
+  touch "$SCHED_EVIDENCE/release-slow"
   echo "not ok - scheduler waited for oldest worker"
   exit 1
 fi
-echo "ok - replacement fixture started before slow fixture finished"
+touch "$SCHED_EVIDENCE/release-slow"
+echo "ok - replacement fixture released the blocked slow fixture"
 SH
   chmod +x "$runner" "$repo/$a" "$repo/$b" "$repo/$c" "$fake_bin/stat"
   set +e
