@@ -686,9 +686,10 @@ function validateTrackedWorkflows(workflowFiles, readTracked, manifest, projectL
       const jobText = job.lines.join("\n");
       const usesDoppler =
         /uses:\s*dopplerhq\/secrets-fetch-action@/.test(jobText) || /\bdoppler\s+run\b/.test(jobText);
+      const usesCliDoppler = /\bdoppler\s+run\b/.test(jobText);
       const usesServiceToken = /doppler-token:\s*\$\{\{\s*secrets\.[^}]+\}\}/.test(jobText);
       const usesOidc = /auth-method:\s*oidc\b/.test(jobText);
-      if (!usesDoppler || (!usesServiceToken && !usesOidc)) {
+      if (!usesDoppler || (!usesCliDoppler && !usesServiceToken && !usesOidc)) {
         return;
       }
       injectingJobs += 1;
