@@ -44,7 +44,7 @@ setup_case() {
   CASE_DIR="$TMP_ROOT/$1"
   mkdir -p "$CASE_DIR/fakebin" "$CASE_DIR/npm-root"
   make_npm_tool tasks-axi 0.2.3 dist/bin/tasks-axi.js
-  make_npm_tool gh-axi 0.1.27 dist/bin/gh-axi.js
+  make_npm_tool gh-axi 0.1.27 lib/custom-gh-entry.js
   make_npm_tool lavish-axi 0.1.42 dist/cli.mjs
   make_npm_tool quota-axi 0.1.6 dist/bin/quota-axi.js
   make_npm_tool chrome-devtools-axi 0.1.26 dist/bin/chrome-devtools-axi.js

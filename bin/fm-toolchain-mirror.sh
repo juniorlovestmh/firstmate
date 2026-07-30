@@ -70,15 +70,22 @@ validate_tool() {
   esac
 }
 
-npm_bin_relative() {
-  case "$1" in
-    tasks-axi) printf '%s\n' 'dist/bin/tasks-axi.js' ;;
-    gh-axi) printf '%s\n' 'dist/bin/gh-axi.js' ;;
-    lavish-axi) printf '%s\n' 'dist/cli.mjs' ;;
-    quota-axi) printf '%s\n' 'dist/bin/quota-axi.js' ;;
-    chrome-devtools-axi) printf '%s\n' 'dist/bin/chrome-devtools-axi.js' ;;
-    *) return 1 ;;
-  esac
+validate_npm_bin_metadata() {
+  metadata_path=$1
+  tool=$2
+  tab=$(printf '\t')
+  while IFS="$tab" read -r bin_name bin_relative || [ -n "${bin_name:-}" ]; do
+    validate_name "npm bin name" "$bin_name"
+    case "$bin_relative" in
+      ''|/*|*' '*) die "invalid npm bin target for $tool: $bin_relative" ;;
+      *"$tab"*) die "invalid npm bin target for $tool: $bin_relative" ;;
+      *'..'*) die "invalid npm bin target for $tool: $bin_relative" ;;
+      *[^A-Za-z0-9._/-]*) die "invalid npm bin target for $tool: $bin_relative" ;;
+    esac
+    case "$bin_relative" in
+      ../*|*/../*|*/..|.. ) die "invalid npm bin target for $tool: $bin_relative" ;;
+    esac
+  done < "$metadata_path"
 }
 
 update_mechanism() {
@@ -186,19 +193,41 @@ snapshot_tool() {
     [ "$version" = "$package_version" ] \
       || die "$tool --version reported $version but package.json records $package_version"
     artifact="artifacts/npm/$tool.tar.gz"
+    bin_metadata="metadata/npm/$tool.bin.tsv"
+    mkdir -p "$TMP_PATH/$(dirname "$bin_metadata")"
+    node - "$package_dir/package.json" > "$TMP_PATH/$bin_metadata" <<'NODE'
+const fs = require('fs');
+const packagePath = process.argv[2];
+const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+const bin = typeof packageJson.bin === 'string'
+  ? { [packageJson.name]: packageJson.bin }
+  : packageJson.bin;
+if (!bin || typeof bin !== 'object' || Array.isArray(bin)) {
+  process.exit(1);
+}
+for (const name of Object.keys(bin).sort()) {
+  if (typeof bin[name] !== 'string' || bin[name].length === 0) {
+    process.exit(1);
+  }
+  process.stdout.write(`${name}\t${bin[name]}\n`);
+}
+NODE
+    [ -s "$TMP_PATH/$bin_metadata" ] || die "installed npm package has no usable bin mapping: $tool"
+    validate_npm_bin_metadata "$TMP_PATH/$bin_metadata" "$tool"
     tar -czf "$TMP_PATH/$artifact" -C "$NPM_ROOT" "$tool"
     source="npm-global:$package_dir"
   else
     resolved=$(resolve_executable "$command_path") || die "could not resolve $command_path"
     artifact="artifacts/bin/$tool"
+    bin_metadata=-
     install -m 0755 "$resolved" "$TMP_PATH/$artifact"
     source="binary:$resolved"
   fi
 
   checksum=$(sha256_file "$TMP_PATH/$artifact")
   mechanism=$(update_mechanism "$tool")
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$tool" "$kind" "$version" "$version_file" "$artifact" "$checksum" "$source" "$mechanism" \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$tool" "$kind" "$version" "$version_file" "$artifact" "$checksum" "$source" "$mechanism" "$bin_metadata" \
     >> "$TMP_PATH/manifest.tsv"
 }
 
@@ -222,7 +251,7 @@ snapshot_action() {
 
   TMP_PATH=$(mktemp -d "$MIRROR/.snapshot.XXXXXX") || die "could not create mirror staging directory"
   mkdir -p "$TMP_PATH/artifacts/npm" "$TMP_PATH/artifacts/bin" "$TMP_PATH/versions"
-  printf 'tool\tkind\tversion\tversion_file\tartifact\tsha256\tinstall_source\tupdate_mechanism\n' \
+  printf 'tool\tkind\tversion\tversion_file\tartifact\tsha256\tinstall_source\tupdate_mechanism\tbin_metadata\n' \
     > "$TMP_PATH/manifest.tsv"
   printf 'schema\tfm-toolchain-mirror.v1\nos\t%s\narch\t%s\n' "$(uname -s)" "$(uname -m)" \
     > "$TMP_PATH/platform.tsv"
@@ -263,7 +292,7 @@ verify_archive_shape() {
 
 verify_manifest() {
   manifest=$1
-  expected_header='tool	kind	version	version_file	artifact	sha256	install_source	update_mechanism'
+  expected_header='tool	kind	version	version_file	artifact	sha256	install_source	update_mechanism	bin_metadata'
   IFS= read -r actual_header < "$manifest" || true
   [ "$actual_header" = "$expected_header" ] || die "snapshot manifest header is invalid"
   expected_schema=$(awk -F '\t' '$1 == "schema" { print $2; exit }' "$SNAPSHOT_DIR/platform.tsv")
@@ -279,7 +308,7 @@ verify_manifest() {
   found=0
   seen=' '
   tab=$(printf '\t')
-  while IFS="$tab" read -r tool kind version version_file artifact checksum source mechanism \
+  while IFS="$tab" read -r tool kind version version_file artifact checksum source mechanism bin_metadata \
     || [ -n "${tool:-}" ]; do
     [ "$tool" != tool ] || continue
     [ -n "$tool" ] || continue
@@ -294,8 +323,18 @@ verify_manifest() {
     [ "$version_file" = "versions/$tool.txt" ] \
       || die "unexpected version output path for $tool: $version_file"
     case "$kind" in
-      npm) expected_artifact="artifacts/npm/$tool.tar.gz" ;;
-      binary) expected_artifact="artifacts/bin/$tool" ;;
+      npm)
+        expected_artifact="artifacts/npm/$tool.tar.gz"
+        expected_bin_metadata="metadata/npm/$tool.bin.tsv"
+        [ "$bin_metadata" = "$expected_bin_metadata" ] \
+          || die "unexpected npm bin metadata path for $tool: $bin_metadata"
+        [ -f "$SNAPSHOT_DIR/$bin_metadata" ] \
+          || die "npm bin metadata is missing for $tool"
+        ;;
+      binary)
+        expected_artifact="artifacts/bin/$tool"
+        [ "$bin_metadata" = "-" ] || die "binary tool has unexpected bin metadata: $tool"
+        ;;
       *) die "unsupported artifact kind for $tool: $kind" ;;
     esac
     [ "$artifact" = "$expected_artifact" ] \
@@ -311,7 +350,10 @@ verify_manifest() {
     [ "$recorded_version" = "$version" ] \
       || die "version output for $tool reports $recorded_version, expected $version"
     case "$kind" in
-      npm) verify_archive_shape "$tool" "$artifact_path" ;;
+      npm)
+        verify_archive_shape "$tool" "$artifact_path"
+        validate_npm_bin_metadata "$SNAPSHOT_DIR/$bin_metadata" "$tool"
+        ;;
       binary) ;;
     esac
     [ -n "$version" ] && [ -n "$source" ] && [ -n "$mechanism" ] \
@@ -360,7 +402,7 @@ restore_action() {
 
   tab=$(printf '\t')
   restored=0
-  while IFS="$tab" read -r tool kind version version_file artifact checksum source mechanism \
+  while IFS="$tab" read -r tool kind version version_file artifact checksum source mechanism bin_metadata \
     || [ -n "${tool:-}" ]; do
     [ "$tool" != tool ] || continue
     [ -n "$tool" ] || continue
@@ -370,10 +412,15 @@ restore_action() {
     artifact_path="$SNAPSHOT_DIR/$artifact"
     if [ "$kind" = npm ]; then
       tar -xzf "$artifact_path" -C "$TMP_PATH/lib/node_modules"
-      bin_relative=$(npm_bin_relative "$tool")
-      [ -f "$TMP_PATH/lib/node_modules/$tool/$bin_relative" ] \
-        || die "restored npm package lacks $bin_relative: $tool"
-      ln -s "../lib/node_modules/$tool/$bin_relative" "$TMP_PATH/bin/$tool"
+      bin_count=0
+      while IFS="$tab" read -r bin_name bin_relative || [ -n "${bin_name:-}" ]; do
+        [ -f "$TMP_PATH/lib/node_modules/$tool/$bin_relative" ] \
+          || die "restored npm package lacks $bin_relative: $tool"
+        [ ! -e "$TMP_PATH/bin/$bin_name" ] || die "duplicate restored npm bin: $bin_name"
+        ln -s "../lib/node_modules/$tool/$bin_relative" "$TMP_PATH/bin/$bin_name"
+        [ "$bin_name" = "$tool" ] && bin_count=$((bin_count + 1))
+      done < "$SNAPSHOT_DIR/$bin_metadata"
+      [ "$bin_count" -eq 1 ] || die "npm package has no unique $tool bin mapping"
     else
       install -m 0755 "$artifact_path" "$TMP_PATH/bin/$tool"
     fi
