@@ -78,6 +78,8 @@ Do not build or suggest a Firstmate webhook bridge for this workflow.
 
 ## Captain dogfood from Moshi
 
+Live mobile execution status: NOT RUN. No Moshi or Browser Preview session was available to this worker, so this checklist remains for a captain-run review; no end-user mobile evidence is claimed here.
+
 Run this checklist against a harmless private review with no secret values.
 
 1. Open the saved host connection in Moshi and attach to the Firstmate Herdr session used on desktop.

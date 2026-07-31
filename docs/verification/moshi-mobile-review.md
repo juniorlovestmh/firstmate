@@ -12,6 +12,7 @@ The natural-language trigger and captain-facing message shape are agent behavior
 That is an explicit agent-behavior test exception: do not add a test that parses or asserts instruction source bytes.
 Deterministic validation covers the maintained-prose inventory, local links, repository lint surface, and changed-file-selected behavior suite.
 Fresh-context dogfood covers whether an agent loads the public `AGENTS.md` trigger and produces the required mobile handoff.
+Live mobile execution status: NOT RUN. No Moshi or Browser Preview session was available to this worker, so no Preview, Diff, Chat View, or fallback end-user evidence is claimed; the complete captain-run checklist remains in [`docs/moshi-mobile-review.md`](../moshi-mobile-review.md).
 
 ## Moshi facts in scope
 
