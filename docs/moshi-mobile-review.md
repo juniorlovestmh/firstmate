@@ -5,7 +5,7 @@ Audience: operator current.
 Moshi is the phone interface into the same host-side Firstmate session, not a second agent or control plane.
 This runbook covers a Firstmate session reached through an existing Moshi host connection, with Moshi Pro and the already-installed `moshi-hook` available for host-gateway features.
 Moshi's own documentation remains the setup owner for the app, subscription, connection, and hook service.
-Use Moshi's current [Browser Preview](https://getmoshi.app/docs/browser-preview), [Diff](https://getmoshi.app/docs/diff-viewer), [Chat View](https://getmoshi.app/docs/chat-view), and [Hooks](https://getmoshi.app/docs/hooks) documentation when product UI or requirements change.
+The current Moshi product facts and supported-harness evidence are maintained in the [verification record](verification/moshi-mobile-review.md); consult Moshi's official [Browser Preview](https://getmoshi.app/docs/browser-preview), [Diff](https://getmoshi.app/docs/diff-viewer), [Chat View](https://getmoshi.app/docs/chat-view), and [Hooks](https://getmoshi.app/docs/hooks) documentation when product UI or requirements change.
 Firstmate does not install, update, pair, or configure Moshi through this workflow.
 
 ## Choose the review surface
@@ -30,8 +30,7 @@ They do not replace Firstmate supervision, approval authority, merge rules, or c
 5. Keep `lavish-axi poll <review-file>` attached through the current supervised Lavish workflow while feedback is expected.
 6. If Preview is unavailable, stop depending on the visual surface and restate the complete decision in chat with numbered low-typing replies.
 
-Do not send the host's raw local URL as the mobile handoff.
-Moshi discovers the host-local HTTP listener and forwards it inside the active SSH-capable session, so no public URL or manual tunnel is required.
+Do not send the host's raw local URL as the mobile handoff; use Browser Preview's host-local forwarding through the existing connection.
 Closing the Moshi session retires that phone-side forward without changing the host-side Firstmate session.
 
 Private fleet state must never be moved to `lavish-axi share` as a fallback.
@@ -55,7 +54,7 @@ When a pull request exists, Firstmate still sends its full `https://...` URL in 
 
 Chat View is a presentation layer over the same live agent process and transcript.
 It does not start a second agent, copy the session into a new protocol, or move Firstmate authority into Moshi.
-Current Moshi documentation lists Claude Code, Codex CLI, OpenCode, and Pi as supported and requires the agent to run inside tmux or Herdr.
+Use Chat View only for a harness and session covered by the current [compatibility record](verification/moshi-mobile-review.md) and its documented runtime requirements.
 When the agent, multiplexer, prompt, or approval card is unsupported, keep the same Moshi/Firstmate session and present the complete fallback as concise numbered Firstmate chat. The terminal remains the source of truth, but it is not a separate mobile handoff surface.
 
 ## Authority and privacy boundaries

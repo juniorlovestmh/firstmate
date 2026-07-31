@@ -172,6 +172,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/secrets-management/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/stow/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -244,6 +248,18 @@
       "audience": "operator-example"
     },
     {
+      "path": "docs/examples/doppler-oidc-job.yml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/doppler-service-token-job.yml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/project-secrets-policy.json",
+      "audience": "operator-example"
+    },
+    {
       "path": "docs/examples/wedge-alarm",
       "audience": "operator-example"
     },
@@ -269,6 +285,10 @@
     },
     {
       "path": "docs/orca-backend.md",
+      "audience": "operator-current"
+    },
+    {
+      "path": "docs/promotion-ladder.md",
       "audience": "operator-current"
     },
     {
@@ -314,6 +334,10 @@
     {
       "path": "docs/turnend-guard.md",
       "audience": "operator-current"
+    },
+    {
+      "path": "docs/toolchain-versions.md",
+      "audience": "maintainer-verification"
     },
     {
       "path": "docs/verification/runtime-backends.md",
