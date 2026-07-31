@@ -156,6 +156,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/mobile-mode/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/project-management/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -276,6 +280,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/moshi-mobile-review.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/orca-backend.md",
       "audience": "operator-current"
     },
@@ -328,7 +336,15 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/toolchain-versions.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/verification/runtime-backends.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/verification/moshi-mobile-review.md",
       "audience": "maintainer-verification"
     },
     {
