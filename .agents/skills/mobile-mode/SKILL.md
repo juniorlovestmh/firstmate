@@ -37,7 +37,7 @@ Never present a raw `127.0.0.1`, `localhost`, `file://`, or desktop-only LAN URL
 If Browser Preview is unavailable, restate the complete decision in chat with numbered replies instead of suggesting public sharing.
 
 Use Moshi Pro Diff to inspect the connected working tree, while keeping a full HTTPS pull-request link in chat for a hosted PR review.
-Use Chat View only when Moshi recognizes the active agent and session, and treat the terminal as the source of truth for unsupported prompts or incomplete cards.
+Use Chat View only when Moshi recognizes the active agent and session. For unsupported prompts, incomplete cards, or an unrecognized session, keep the same Moshi/Firstmate session and present the complete fallback as concise numbered Firstmate chat; the terminal remains the source of truth, but is not a separate mobile handoff surface.
 
 Private fleet reviews stay host-local.
 Never invoke or suggest `lavish-axi share` for private fleet state, even with a password.

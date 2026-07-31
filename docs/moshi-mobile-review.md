@@ -14,7 +14,7 @@ Firstmate does not install, update, pair, or configure Moshi through this workfl
 | --- | --- | --- |
 | Several options or structured feedback | Host-local Lavish through Moshi Pro Browser Preview | Numbered Firstmate chat |
 | Current working-tree changes | Moshi Pro Diff | Full HTTPS PR link or compact chat summary |
-| A phone-native view of the live agent conversation | Moshi Chat View when the current agent and session are supported | The same Moshi terminal session |
+| A phone-native view of the live agent conversation | Moshi Chat View when the current agent and session are supported | Concise numbered Firstmate chat in the same Moshi/Firstmate session |
 | A simple approval or decision | Firstmate chat, or the agent's exact native approval when `moshi-hook` exposes it | The same Moshi terminal session |
 
 Browser Preview, Diff, and Chat View all preserve the host session as the source of truth.
@@ -56,7 +56,7 @@ When a pull request exists, Firstmate still sends its full `https://...` URL in 
 Chat View is a presentation layer over the same live agent process and transcript.
 It does not start a second agent, copy the session into a new protocol, or move Firstmate authority into Moshi.
 Current Moshi documentation lists Claude Code, Codex CLI, OpenCode, and Pi as supported and requires the agent to run inside tmux or Herdr.
-When the agent, multiplexer, prompt, or approval card is unsupported, close Chat View and continue in the terminal without a handoff protocol.
+When the agent, multiplexer, prompt, or approval card is unsupported, keep the same Moshi/Firstmate session and present the complete fallback as concise numbered Firstmate chat. The terminal remains the source of truth, but it is not a separate mobile handoff surface.
 
 ## Authority and privacy boundaries
 
@@ -72,7 +72,7 @@ Do not build or suggest a Firstmate webhook bridge for this workflow.
 | --- | --- |
 | Browser Preview does not detect Lavish | Present the full decision in numbered chat and keep the private artifact host-local. |
 | Diff is unavailable or points at the wrong directory | Send the full HTTPS PR link when one exists, or summarize the local changes in chat. |
-| Chat View does not recognize the session | Continue in the same Moshi terminal session. |
+| Chat View does not recognize the session | Keep the same Moshi/Firstmate session and present the complete decision as concise numbered Firstmate chat. |
 | A card cannot answer an agent prompt safely | Return to the native terminal prompt. |
 | The hook is unavailable | Use Firstmate chat or the native terminal without changing authority. |
 

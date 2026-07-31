@@ -30,9 +30,9 @@ The supported Firstmate harness list comes from [`harness-adapters`](../../.agen
 | Codex | Applies through the shared agent contract. | Official Moshi hooks support exists; configuration is external and unchanged. | Listed by Moshi. | None. |
 | OpenCode | Applies through the shared agent contract. | Official Moshi hooks support exists; configuration is external and unchanged. | Listed by Moshi. | None. |
 | Pi | Applies through the shared agent contract. | Official Moshi hooks support exists, but Firstmate's Pi has no permission system, so approval authority is not applicable. | Listed by Moshi. | None. |
-| pi-signed | Applies through the shared agent contract. | It uses the Pi engine, but wrapper-specific Moshi detection is not independently verified. | Use terminal fallback unless Moshi recognizes it as Pi. | None. |
-| Grok | Applies through the shared agent contract. | Official Moshi hooks support exists; configuration is external and unchanged. | Not in the current official Chat View list, so use terminal fallback. | None. |
-| Kimi | Applies through the shared agent contract. | Official Moshi hooks support exists; configuration is external and unchanged. | Not in the current official Chat View list, so use terminal fallback. | None. |
+| pi-signed | Applies through the shared agent contract. | It uses the Pi engine, but wrapper-specific Moshi detection is not independently verified. | Use concise numbered Firstmate chat in the same Moshi/Firstmate session unless Moshi recognizes it as Pi. | None. |
+| Grok | Applies through the shared agent contract. | Official Moshi hooks support exists; configuration is external and unchanged. | Not in the current official Chat View list, so use concise numbered Firstmate chat in the same Moshi/Firstmate session. | None. |
+| Kimi | Applies through the shared agent contract. | Official Moshi hooks support exists; configuration is external and unchanged. | Not in the current official Chat View list, so use concise numbered Firstmate chat in the same Moshi/Firstmate session. | None. |
 
 The repository's Claude, Codex, OpenCode, Pi, Grok, and Kimi hook or extension surfaces were inspected for ownership overlap.
 This slice changes none of them and makes no compatibility claim about the captain's external Moshi-managed hook configuration.
@@ -45,7 +45,7 @@ The supported spawn backend list comes from `FM_BACKEND_SPAWN` in [`bin/fm-backe
 | --- | --- | --- |
 | tmux | Moshi Chat View currently supports tmux; Browser Preview and Diff use the host gateway. | No backend behavior changes. |
 | Herdr | Selected Firstmate mobile path; Moshi Chat View currently supports Herdr; Browser Preview and Diff use the host gateway. | No backend behavior changes. |
-| Zellij | Moshi can detect Zellij for terminal context, but current Chat View requirements exclude it. | Terminal, Browser Preview, and Diff may remain usable; Chat View falls back to terminal; no backend behavior changes. |
+| Zellij | Moshi can detect Zellij for terminal context, but current Chat View requirements exclude it. | Terminal, Browser Preview, and Diff may remain usable; Chat View falls back to concise numbered Firstmate chat in the same Moshi/Firstmate session; no backend behavior changes. |
 | Orca | No Firstmate-to-Moshi session integration is claimed. | Not applicable to the selected Herdr workflow; no backend behavior changes. |
 | cmux | No Firstmate-to-Moshi session integration is claimed. | Not applicable to the selected Herdr workflow; no backend behavior changes. |
 | Codex App | Firstmate does not accept it as a runtime backend. | Not applicable. |
