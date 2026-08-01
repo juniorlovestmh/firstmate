@@ -104,6 +104,60 @@ EOF
   pass "ShellCheck installer selects each supported platform asset"
 }
 
+test_installer_uses_shasum_fallback() {
+  local tmp fakebin destination out
+  tmp=$(fm_test_tmproot fm-shellcheck-shasum)
+  fakebin=$(fm_fakebin "$tmp")
+  destination="$tmp/bin"
+
+  cat > "$fakebin/uname" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  -s) printf 'Darwin\n' ;;
+  -m) printf 'arm64\n' ;;
+  *) exit 2 ;;
+esac
+SH
+  cat > "$fakebin/curl" <<'SH'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    : > "$2"
+    exit 0
+  fi
+  shift
+done
+exit 2
+SH
+  cat > "$fakebin/shasum" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = "-a" ] && [ "$2" = "256" ] || exit 2
+printf '56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79  %s\n' "$3"
+SH
+  cat > "$fakebin/tar" <<'SH'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-C" ]; then
+    mkdir -p "$2/shellcheck-v0.11.0"
+    cat > "$2/shellcheck-v0.11.0/shellcheck" <<'EOF'
+#!/usr/bin/env bash
+printf 'ShellCheck - shell script analysis tool\nversion: 0.11.0\n'
+EOF
+    chmod +x "$2/shellcheck-v0.11.0/shellcheck"
+    exit 0
+  fi
+  shift
+done
+exit 2
+SH
+  chmod +x "$fakebin/uname" "$fakebin/curl" "$fakebin/shasum" "$fakebin/tar"
+
+  out=$(PATH="$fakebin:/usr/bin:/bin" "$INSTALLER" "$destination" 2>&1) \
+    || fail "installer did not use the shasum fallback on Darwin"$'\n'"$out"
+  [ -x "$destination/shellcheck" ] || fail "installer did not install ShellCheck after shasum verification"
+  pass "ShellCheck installer uses shasum when sha256sum is unavailable"
+}
+
 test_installer_rejects_unsupported_platform() {
   local tmp fakebin destination out rc
   tmp=$(fm_test_tmproot fm-shellcheck-platform-unsupported)
@@ -526,6 +580,7 @@ SH
 test_list_files_reports_the_shell_inventory
 test_pins_an_explicit_version
 test_installer_selects_supported_platform_assets
+test_installer_uses_shasum_fallback
 test_installer_rejects_unsupported_platform
 test_installer_retries_transient_download_failure
 test_rejects_wrong_shellcheck_version

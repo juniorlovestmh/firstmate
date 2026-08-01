@@ -43,7 +43,14 @@ while ! curl -fsSL "$URL" -o "$TMP/$ARCHIVE"; do
   sleep "$download_attempt"
   download_attempt=$((download_attempt + 1))
 done
-ACTUAL_SHA256=$(sha256sum "$TMP/$ARCHIVE" | awk '{print $1}')
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL_SHA256=$(sha256sum "$TMP/$ARCHIVE" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL_SHA256=$(shasum -a 256 "$TMP/$ARCHIVE" | awk '{print $1}')
+else
+  printf 'fm-install-shellcheck.sh: need sha256sum or shasum to verify the archive\n' >&2
+  exit 1
+fi
 [ "$ACTUAL_SHA256" = "$SHA256" ] || {
   printf 'fm-install-shellcheck.sh: checksum mismatch for %s\n' "$ARCHIVE" >&2
   exit 1
