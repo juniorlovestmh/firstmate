@@ -7,8 +7,26 @@ set -eu
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="$("$ROOT/bin/fm-lint.sh" --required-version)"
-SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
-ARCHIVE="shellcheck-v${VERSION}.linux.x86_64.tar.xz"
+PLATFORM="$(uname -s)/$(uname -m)"
+case "$PLATFORM" in
+  Linux/x86_64)
+    ASSET_PLATFORM=linux.x86_64
+    SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+    ;;
+  Darwin/arm64)
+    ASSET_PLATFORM=darwin.aarch64
+    SHA256=56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79
+    ;;
+  Darwin/x86_64)
+    ASSET_PLATFORM=darwin.x86_64
+    SHA256=3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6
+    ;;
+  *)
+    printf 'fm-install-shellcheck.sh: unsupported platform: %s\n' "$PLATFORM" >&2
+    exit 1
+    ;;
+esac
+ARCHIVE="shellcheck-v${VERSION}.${ASSET_PLATFORM}.tar.xz"
 URL="https://github.com/koalaman/shellcheck/releases/download/v${VERSION}/${ARCHIVE}"
 DESTINATION=${1:?usage: fm-install-shellcheck.sh <destination-directory>}
 TMP=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/fm-shellcheck.XXXXXX")
