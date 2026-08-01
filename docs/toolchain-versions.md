@@ -3,6 +3,8 @@
 This manifest records the fleet-critical CLI installation observed on 2026-07-29 on Darwin arm64.
 It is an evidence snapshot, not an update request.
 No tool version was changed while producing it.
+The recorded `quota-axi` 0.1.6 predates the current 0.1.16 bootstrap floor, so this specific historical snapshot cannot recover a runnable current Firstmate home by itself.
+Install a compatible `quota-axi`, create and verify a fresh snapshot, and retain this record only as evidence of the earlier accepted mirror run.
 
 ## Installed versions
 
@@ -94,7 +96,7 @@ The restore refuses an existing prefix, verifies every selected checksum before 
 2. Run `bin/fm-toolchain-mirror.sh verify` against the last known-good local snapshot.
 3. Restore that snapshot to a new prefix and place its `bin/` first on `PATH`.
 4. Re-run the live evidence commands above and the affected Firstmate bootstrap or task path.
-5. Resume fleet work only after the pinned commands match the mirror manifest.
+5. Resume fleet work only after the pinned commands match the mirror manifest and Firstmate bootstrap reports no minimum-version diagnostic.
 
 Do not restart or update the shared `no-mistakes` daemon while any lane has an active pipeline.
 If the restored CLI and running daemon are incompatible, drain active lanes and let the Firstmate operator own the daemon recovery.
