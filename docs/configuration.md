@@ -320,7 +320,7 @@ The poll requests unresolved incidents from Better Stack's documented [`GET /api
 
 A poll prints one compact identity line for each unresolved incident; it does not claim delivery state before the watcher appends the wake.
 The watcher owns the durable commit point: under the wake-queue lock it appends one `check:` record per incident, publishes the private identity-bound receipt at `state/better-stack-incidents.receipts/<id>`, and then publishes `state/better-stack-incidents.seen/<id>`.
-If the watcher stops after queue append, the receipt survives queue drain and the next watcher run completes the seen marker without appending a second wake. Already-seen incidents and quiet API responses print nothing.
+If the watcher stops after queue append, the receipt survives queue drain and the next watcher run completes the seen marker without appending a second wake. The poll emits every unresolved incident on each scan; the watcher suppresses already-delivered incident IDs, so repeated poll output normally remains silent at the durable wake boundary. If receipt publication itself fails after queue append and that queue record is drained before retry, a rare duplicate wake can occur; the wake handler deduplicates by incident ID.
 Missing credentials, Doppler access failure, network failure, non-success HTTP status, and malformed API data print one `better-stack-error ...` diagnostic and record it in `state/better-stack-incidents.diagnostics/error`; the same diagnostic then remains silent until a successful poll clears the marker or a different failure occurs.
 
 Remove `config/better-stack-incidents` and rerun locked session start to retire the runnable check and its trust binding.
