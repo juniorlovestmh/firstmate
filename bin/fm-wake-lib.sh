@@ -407,14 +407,14 @@ fm_wake_append() {
 }
 
 fm_wake_incident_receipt_valid() {
-  local receipt=$1 id=$2 version receipt_id payload extra
+  local receipt=$1 id=$2 version receipt_id payload
   local receipt_dir=${receipt%/*} base=${receipt##*/}
   fmx_private_artifact_file_valid "$receipt_dir" "$base" 600 || return 1
   exec 9< "$receipt" || return 1
   IFS= read -r version <&9 || { exec 9<&-; return 1; }
   IFS= read -r receipt_id <&9 || { exec 9<&-; return 1; }
   IFS= read -r payload <&9 || { exec 9<&-; return 1; }
-  if IFS= read -r extra <&9; then
+  if IFS= read -r <&9; then
     exec 9<&-
     return 1
   fi
@@ -425,7 +425,8 @@ fm_wake_incident_receipt_valid() {
 }
 
 fm_wake_append_incident_once() {
-  local id=$1 payload=$2 key="better-stack-incident:$id"
+  local id=$1 payload=$2
+  local key="better-stack-incident:$id"
   local seen_dir="$STATE/better-stack-incidents.seen" seen_file="$STATE/better-stack-incidents.seen/$id"
   local receipt_dir="$STATE/better-stack-incidents.receipts" receipt="$STATE/better-stack-incidents.receipts/$id"
   local epoch seq seq_file status=0 receipt_rc marker_rc

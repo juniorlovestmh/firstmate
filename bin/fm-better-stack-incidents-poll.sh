@@ -23,7 +23,6 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 ERROR_DIR="$STATE/better-stack-incidents.diagnostics"
 ERROR_FILE="$ERROR_DIR/error"
-SEEN_DIR="$STATE/better-stack-incidents.seen"
 
 # Reuse the watcher's existing private-artifact owner rather than introducing a
 # second atomic-publication contract for one extension.
