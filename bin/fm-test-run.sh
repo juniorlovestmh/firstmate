@@ -128,7 +128,7 @@ family_for_basename() {
     fm-send-popup-settle.test.sh|fm-send-settle.test.sh|\
     fm-subagent-pretool-check.test.sh|\
     fm-supervision-instructions.test.sh|fm-tmux-submit-busy.test.sh|fm-transition-lib.test.sh|\
-    fm-test-run.test.sh|fm-test-isolation-proof.test.sh)
+    fm-test-run.test.sh|fm-test-isolation-proof.test.sh|fm-toolchain-mirror.test.sh)
       printf '%s\n' pure-contract-unit
       ;;
     fm-daemon.test.sh|fm-guard-stale-banner.test.sh|fm-pi-watch-extension.test.sh|\
@@ -685,9 +685,6 @@ families_for_changed_path() {
     bin/fm-ff-lib.sh|bin/fm-gotmp*|bin/*pretool*)
       printf '%s\n' pure-contract-unit
       ;;
-    .agents/skills/*/SKILL.md)
-      printf '%s\n' pure-contract-unit
-      ;;
     .github/workflows/ci.yml|.no-mistakes.yaml)
       printf '%s\n' pure-contract-unit
       printf '%s\n' real-herdr-gated
@@ -695,6 +692,9 @@ families_for_changed_path() {
     docs/fm-test-portable-shards.md|docs/fm-test-isolation-proof.md|\
     docs/fm-test-isolation-proof.json|docs/secrets-*|docs/examples/project-secrets-policy.json|\
     docs/examples/doppler-*-job.yml)
+      printf '%s\n' pure-contract-unit
+      ;;
+    .agents/skills/*/SKILL.md)
       printf '%s\n' pure-contract-unit
       ;;
     .github/*|.tasks.toml|AGENTS.md|CLAUDE.md|CONTRIBUTING.md|\
