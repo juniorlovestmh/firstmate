@@ -104,6 +104,9 @@ for a in "$@"; do
     *) POS+=("$a") ;;
   esac
 done
+[ "${#POS[@]}" -ge 1 ] || { echo "error: missing task ID" >&2; exit 1; }
+[ "$KIND" = secondmate ] || [ "${#POS[@]}" -ge 2 ] \
+  || { echo "error: missing repository" >&2; exit 1; }
 ID=${POS[0]}
 
 if [ "$KIND" = secondmate ] && [ "$HERDR_LAB" -eq 1 ]; then

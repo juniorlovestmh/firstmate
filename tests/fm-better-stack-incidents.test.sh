@@ -36,16 +36,22 @@ shift
 exec env BETTER_STACK_API_TOKEN="${FM_TEST_BETTER_STACK_TOKEN:-}" "$@"
 SH
 
-  cat > "$fakebin/curl" <<'SH'
+cat > "$fakebin/curl" <<'SH'
 #!/usr/bin/env bash
 cat >/dev/null
 printf '%s\n' "$*" >> "$FM_TEST_CURL_LOG"
 [ "${FM_TEST_CURL_FAIL:-0}" = 0 ] || exit 7
-printf '%s\n%s' "${FM_TEST_API_BODY:-}" "${FM_TEST_API_CODE:-200}"
+count=$(cat "$FM_TEST_CURL_COUNT" 2>/dev/null || echo 0)
+count=$((count + 1))
+printf '%s\n' "$count" > "$FM_TEST_CURL_COUNT"
+body=${FM_TEST_API_BODY:-}
+[ "$count" -eq 2 ] && body=${FM_TEST_API_BODY_2:-$body}
+printf '%s\n%s' "$body" "${FM_TEST_API_CODE:-200}"
 SH
   chmod +x "$fakebin/doppler" "$fakebin/curl"
   : > "$dir/doppler.log"
   : > "$dir/curl.log"
+  : > "$dir/curl.count"
   printf '%s\n' "$dir"
 }
 
@@ -56,6 +62,7 @@ run_poll() {
     FM_HOME="$dir/home" \
     FM_TEST_DOPPLER_LOG="$dir/doppler.log" \
     FM_TEST_CURL_LOG="$dir/curl.log" \
+    FM_TEST_CURL_COUNT="$dir/curl.count" \
     "$@" "$POLL"
 }
 
@@ -76,14 +83,6 @@ test_new_incident_and_duplicate_suppression() {
   expect_code 0 "$rc" "new incident poll exit"
   [ "$out" = 'better-stack-incident opened id=25 name=api-production started=2026-08-01T12:00:00.000Z' ] \
     || fail "new incident must print one compact identity line (got: $out)"
-  assert_present "$dir/home/state/better-stack-incidents.seen/25" \
-    "new incident must claim a private seen marker"
-
-  out=$(run_poll "$dir" env \
-    FM_TEST_BETTER_STACK_TOKEN=synthetic-test-token \
-    FM_TEST_API_BODY="$body" FM_TEST_API_CODE=200); rc=$?
-  expect_code 0 "$rc" "duplicate incident poll exit"
-  [ -z "$out" ] || fail "an already-seen incident must stay silent (got: $out)"
 
   assert_grep '--project fleet-observability --config prd' "$dir/doppler.log" \
     "poll must select the fleet-observability/prd Doppler scope"
@@ -97,6 +96,25 @@ test_new_incident_and_duplicate_suppression() {
     fail "the Better Stack token reached private state or command logs"
   fi
   pass "new Better Stack incident wakes once and duplicate observations stay silent"
+}
+
+test_pagination_and_unsafe_target_rejection() {
+  local dir body next_body out rc
+  dir=$(make_case pagination)
+  body=$(jq -cn --arg next 'https://uptime.betterstack.com/api/v3/incidents?page=2&resolved=false' \
+    '{data: [{id:"25", type:"incident", attributes:{name:"page-one", started_at:"t1", resolved_at:null}}], pagination:{next:$next}}')
+  next_body=$(incident_body 26 page-two t2)
+  out=$(run_poll "$dir" env FM_TEST_BETTER_STACK_TOKEN=synthetic-test-token \
+    FM_TEST_API_BODY="$body" FM_TEST_API_BODY_2="$next_body" FM_TEST_API_CODE=200)
+  [ "$out" = $'better-stack-incident opened id=25 name=page-one started=t1\nbetter-stack-incident opened id=26 name=page-two started=t2' ] \
+    || fail "poll must include unresolved incidents from later pages (got: $out)"
+  body=$(jq -cn '{data: [], pagination:{next:"https://evil.example/api/v3/incidents?resolved=false"}}')
+  out=$(run_poll "$dir" env FM_TEST_BETTER_STACK_TOKEN=synthetic-test-token \
+    FM_TEST_API_BODY="$body" FM_TEST_API_CODE=200); rc=$?
+  expect_code 0 "$rc" "unsafe pagination target poll exit"
+  [ "$out" = 'better-stack-error invalid Better Stack pagination target' ] \
+    || fail "unsafe pagination target must produce one diagnostic (got: $out)"
+  pass "Better Stack pagination reaches later pages and rejects unsafe targets"
 }
 
 test_api_error_reports_once_and_recovers() {
@@ -175,6 +193,7 @@ SH
   out=$(PATH="$dir/fakebin:$BASE_PATH" \
     FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" \
     FM_TEST_DOPPLER_LOG="$dir/doppler.log" FM_TEST_CURL_LOG="$dir/curl.log" \
+    FM_TEST_CURL_COUNT="$dir/curl.count" \
     FM_TEST_BETTER_STACK_TOKEN=synthetic-test-token \
     FM_TEST_API_BODY="$body" FM_TEST_API_CODE=200 \
     FM_CHECK_INTERVAL=0 FM_HEARTBEAT=999999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
@@ -184,6 +203,18 @@ SH
     "registered poll output must become a check wake with the incident identity"
   [ "$(grep -c 'better-stack-incident opened id=91' "$state/.wake-queue")" -eq 1 ] \
     || fail "new incident must create exactly one durable wake record"
+  rm -f "$state/.last-check"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" \
+    FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" \
+    FM_TEST_DOPPLER_LOG="$dir/doppler.log" FM_TEST_CURL_LOG="$dir/curl.log" \
+    FM_TEST_CURL_COUNT="$dir/curl.count" \
+    FM_TEST_BETTER_STACK_TOKEN=synthetic-test-token \
+    FM_TEST_API_BODY="$body" FM_TEST_API_CODE=200 \
+    FM_CHECK_INTERVAL=0 FM_HEARTBEAT=999999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    "$WATCH"); rc=$?
+  expect_code 0 "$rc" "duplicate watcher incident delivery exit"
+  [ "$(grep -c 'better-stack-incident opened id=91' "$state/.wake-queue")" -eq 1 ] \
+    || fail "replayed incident must not create a duplicate durable wake"
   pass "registered Better Stack poll delivers exactly one authenticated check wake"
 }
 
@@ -239,6 +270,7 @@ test_incident_check_keeps_home_supervised() {
 }
 
 test_new_incident_and_duplicate_suppression
+test_pagination_and_unsafe_target_rejection
 test_api_error_reports_once_and_recovers
 test_missing_token_reports_once
 test_registered_check_delivers_check_wake

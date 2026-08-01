@@ -780,8 +780,23 @@ while :; do
         fi
       fi
       if [ -n "$out" ]; then
-        reason="check: $c: $out"
-        fm_wake_append check "$c" "$reason" || exit 1
+        if [ "$(basename "$c")" = better-stack-incidents.check.sh ]; then
+          while IFS= read -r incident_line; do
+            [ -n "$incident_line" ] || continue
+            case "$incident_line" in
+              better-stack-incident\ opened\ id=*)
+                id=${incident_line#better-stack-incident opened id=}
+                id=${id%% *}
+                reason="check: $c: $incident_line"
+                fm_wake_append_incident_once "$id" "$reason" || exit 1
+                ;;
+              *) reason="check: $c: $incident_line"; fm_wake_append check "$c" "$reason" || exit 1 ;;
+            esac
+          done <<< "$out"
+        else
+          reason="check: $c: $out"
+          fm_wake_append check "$c" "$reason" || exit 1
+        fi
         if [ "$is_pr_poll" -eq 1 ] && [ "$out" = merged ]; then
           if fm_pr_poll_retirement_publish "$STATE" "$id" "$SCRIPT_DIR/fm-pr-poll.sh" "$out"; then
             fm_pr_poll_retirement_recover_one "$STATE" "$id" "$SCRIPT_DIR/fm-pr-poll.sh" \

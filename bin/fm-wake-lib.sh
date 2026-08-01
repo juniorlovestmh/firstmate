@@ -406,6 +406,34 @@ fm_wake_append() {
   return "$status"
 }
 
+fm_wake_append_incident_once() {
+  local id=$1 payload=$2 key="better-stack-incident:$id"
+  local seen_dir="$STATE/better-stack-incidents.seen" seen_file="$STATE/better-stack-incidents.seen/$id"
+  local epoch seq seq_file status=0
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
+  if [ -f "$seen_file" ] || awk -F '\t' -v key="$key" '$3 == "check" && $4 == key { found=1 } END { exit !found }' "$FM_WAKE_QUEUE" 2>/dev/null; then
+    if [ ! -f "$seen_file" ]; then
+      (umask 077; mkdir -p "$seen_dir"; printf 'seen\n' > "$seen_file") || status=2
+    fi
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    return "$status"
+  fi
+  epoch=$(date +%s)
+  seq_file="$STATE/.wake-queue.seq"
+  seq=$(cat "$seq_file" 2>/dev/null || echo 0)
+  case "$seq" in ''|*[!0-9]*) seq=0 ;; esac
+  seq=$((seq + 1))
+  printf '%s\n' "$seq" > "$seq_file" || status=$?
+  if [ "$status" -eq 0 ]; then
+    printf '%s\t%s\tcheck\t%s\t%s\n' "$epoch" "$seq" "$key" "$payload" >> "$FM_WAKE_QUEUE" || status=$?
+  fi
+  if [ "$status" -eq 0 ]; then
+    (umask 077; mkdir -p "$seen_dir"; printf 'seen\n' > "$seen_file") || status=2
+  fi
+  fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+  return "$status"
+}
+
 fm_wake_restore_queue() {
   local drained=$1 restore
   restore="$STATE/.wake-queue.restore.$(fm_current_pid)"
