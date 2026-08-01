@@ -29,8 +29,9 @@
 #   Every generated brief carries a versioned scaffold safety marker.
 #   When an existing brief is present, the refusal reports whether that marker
 #   is current but never treats the marker as proof that the task text is fresh.
-#   --force-regenerate archives an existing brief beside it before writing a
-#   fresh scaffold; it never silently clobbers the previous content.
+#   --force-regenerate renders a fresh scaffold before archiving an existing
+#   brief beside it and installing the replacement; it never silently clobbers
+#   the previous content.
 # For ship tasks, the definition of done is shaped by the project's delivery mode
 # (data/projects.md via fm-project-mode.sh; see the project-management skill
 # and AGENTS.md task lifecycle):
@@ -130,15 +131,23 @@ fi
 
 BRIEF="$DATA/$ID/brief.md"
 BRIEF_SAFETY_MARKER='<!-- firstmate-brief-scaffold-safety:v1 -->'
+BRIEF_OUTPUT="$BRIEF"
+
+cleanup_staged_brief() {
+  if [ "$BRIEF_OUTPUT" != "$BRIEF" ]; then
+    rm -f -- "$BRIEF_OUTPUT"
+  fi
+}
 
 brief_has_current_safety_marker() {
   [ -f "$BRIEF" ] && grep -Fqx "$BRIEF_SAFETY_MARKER" "$BRIEF"
 }
 
 prepare_brief_path() {
-  local archive_base archive timestamp suffix
   mkdir -p "$DATA/$ID"
-  [ -e "$BRIEF" ] || return 0
+  if [ ! -e "$BRIEF" ]; then
+    return 0
+  fi
 
   if [ "$FORCE_REGENERATE" -ne 1 ]; then
     echo "error: $BRIEF already exists; refusing to overwrite or silently reuse it" >&2
@@ -152,6 +161,17 @@ prepare_brief_path() {
     return 1
   fi
 
+  BRIEF_OUTPUT=$(mktemp "$DATA/$ID/.brief.md.XXXXXX") || {
+    echo "error: could not stage regenerated brief: $BRIEF" >&2
+    return 1
+  }
+  trap cleanup_staged_brief EXIT
+}
+
+install_staged_brief() {
+  local archive_base archive timestamp suffix
+  [ "$BRIEF_OUTPUT" != "$BRIEF" ] || return 0
+
   timestamp=$(date -u +%Y%m%dT%H%M%SZ)
   archive_base="$BRIEF.archive-$timestamp"
   archive=$archive_base
@@ -160,11 +180,22 @@ prepare_brief_path() {
     archive="$archive_base.$suffix"
     suffix=$((suffix + 1))
   done
-  mv -- "$BRIEF" "$archive" || {
-    echo "error: could not archive existing brief: $BRIEF" >&2
+  if [ -e "$BRIEF" ]; then
+    mv -- "$BRIEF" "$archive" || {
+      echo "error: could not archive existing brief: $BRIEF" >&2
+      return 1
+    }
+  fi
+  if ! mv -- "$BRIEF_OUTPUT" "$BRIEF"; then
+    if [ -e "$archive" ]; then
+      mv -- "$archive" "$BRIEF" || echo "error: could not restore existing brief: $BRIEF" >&2
+    fi
+    echo "error: could not install regenerated brief: $BRIEF" >&2
     return 1
-  }
-  echo "archived existing brief: $archive"
+  fi
+  BRIEF_OUTPUT="$BRIEF"
+  trap - EXIT
+  [ -e "$archive" ] && echo "archived existing brief: $archive"
 }
 
 shell_quote() {
@@ -197,7 +228,7 @@ else
   PROJECT_CLONES_BODY=$(printf '%s\n' "$SECONDMATE_PROJECTS" | tr ' ' '\n' | sed 's/^/- /')
   PROJECT_CLONES_NOTE="The projects above are local clones for work you supervise; they are not an exclusive ownership claim."
 fi
-cat > "$BRIEF" <<EOF
+cat > "$BRIEF_OUTPUT" <<EOF
 $BRIEF_SAFETY_MARKER
 You are a persistent second mate managed by the main firstmate. Work on your own; do not wait for a human.
 
@@ -254,6 +285,7 @@ When you have no assigned or in-flight work after that reconciliation, go idle a
 An empty queue is a healthy resting state, not a cue to invent work: never spawn a survey, audit, or any self-directed "find work" task on your own initiative.
 If this charter cannot be carried out, append \`blocked: {why}\` or \`failed: {why}\` to the main status file and stop.
 EOF
+install_staged_brief || exit 1
 if [ "$SECONDMATE_CHARTER" = "{TASK}" ]; then
   echo "scaffolded: $BRIEF (secondmate charter; replace {TASK})"
 else
@@ -302,7 +334,7 @@ HERDR_SECTION=${HERDR_SECTION%$'\n'}
 fi
 
 if [ "$KIND" = scout ]; then
-cat > "$BRIEF" <<EOF
+cat > "$BRIEF_OUTPUT" <<EOF
 $BRIEF_SAFETY_MARKER
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
@@ -346,6 +378,7 @@ Before reporting done, read and follow \`$FM_ROOT/.agents/skills/decision-hold-l
 When the report is complete, append \`done: {one-line conclusion}\` to the status file and stop.
 If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
 EOF
+install_staged_brief || exit 1
 echo "scaffolded: $BRIEF (scout; replace {TASK})"
 exit 0
 fi
@@ -353,8 +386,12 @@ fi
 # Ship task: shape Setup / Rule 1 / Definition of done by the project's delivery mode.
 # yolo does not affect the brief because the worker never owns approval decisions;
 # firstmate applies the authority contract in AGENTS.md section 7, so discard it.
+MODE_OUTPUT=$("$FM_ROOT/bin/fm-project-mode.sh" "$REPO") || {
+  echo "error: could not resolve delivery mode for $REPO" >&2
+  exit 1
+}
 read -r MODE _ <<EOF
-$("$FM_ROOT/bin/fm-project-mode.sh" "$REPO")
+$MODE_OUTPUT
 EOF
 
 case "$MODE" in
@@ -411,7 +448,7 @@ esac
 # briefs stay byte-identical to the historical Bash 5 output.
 DOD=${DOD%$'\n'}
 
-cat > "$BRIEF" <<EOF
+cat > "$BRIEF_OUTPUT" <<EOF
 $BRIEF_SAFETY_MARKER
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
@@ -463,4 +500,5 @@ Keep it proportionate: skip \`AGENTS.md\` edits for trivial tasks that produced 
 
 $DOD
 EOF
+install_staged_brief || exit 1
 echo "scaffolded: $BRIEF (ship, mode=$MODE; replace {TASK})"

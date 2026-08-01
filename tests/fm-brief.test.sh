@@ -173,7 +173,7 @@ PERL
 test_help_includes_entire_header() {
   local help
   help=$("$ROOT/bin/fm-brief.sh" --help)
-  assert_contains "$help" "--force-regenerate archives an existing brief" \
+  assert_contains "$help" "--force-regenerate renders a fresh scaffold before archiving" \
     "fm-brief.sh --help omitted archive-and-regenerate mechanics"
   pass "fm-brief.sh: --help renders the complete header"
 }
@@ -237,6 +237,28 @@ test_existing_current_brief_still_requires_freshness_verification() {
   assert_grep "verify it intentionally, or rerun with --force-regenerate" "$err" \
     "existing current brief refusal did not give both safe recovery choices"
   pass "fm-brief.sh: a current safety marker never substitutes for task freshness verification"
+}
+
+test_force_regeneration_preserves_brief_when_rendering_fails() {
+  local home id brief fake_root status archive_count
+  home="$TMP_ROOT/failed-regeneration-home"
+  id=failed-regeneration-guard
+  brief="$home/data/$id/brief.md"
+  fake_root="$home/fake-root"
+  mkdir -p "$(dirname "$brief")" "$fake_root/bin"
+  printf '%s\n' 'original brief must survive a failed regeneration' > "$brief"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "$fake_root/bin/fm-project-mode.sh"
+  chmod +x "$fake_root/bin/fm-project-mode.sh"
+
+  status=0
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fake_root" \
+    "$ROOT/bin/fm-brief.sh" "$id" some-proj --force-regenerate >/dev/null 2>&1 || status=$?
+  expect_code 1 "$status" "failed regeneration must return the render failure"
+  assert_grep "original brief must survive" "$brief" \
+    "failed regeneration removed or changed the live brief"
+  archive_count=$(find "$(dirname "$brief")" -maxdepth 1 -type f -name 'brief.md.archive-*' | wc -l | tr -d ' ')
+  [ "$archive_count" = 0 ] || fail "failed regeneration archived the live brief before rendering"
+  pass "fm-brief.sh: failed force regeneration preserves the live brief"
 }
 
 # Registry with one project per delivery mode, so each ship-mode DOD branch is
@@ -685,6 +707,7 @@ test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
 test_existing_brief_refusal_detects_staleness_and_force_regenerates
 test_existing_current_brief_still_requires_freshness_verification
+test_force_regeneration_preserves_brief_when_rendering_fails
 test_ship_modes_generate_clean_briefs
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
