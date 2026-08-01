@@ -46,6 +46,154 @@ test_pins_an_explicit_version() {
   pass "fm-lint.sh pins an explicit ShellCheck version ($REQUIRED)"
 }
 
+test_installer_selects_supported_platform_assets() {
+  local tmp fakebin destination out system machine expected_asset expected_sha expected_archive actual_url
+  tmp=$(fm_test_tmproot fm-shellcheck-platform)
+  fakebin=$(fm_fakebin "$tmp")
+
+  cat > "$fakebin/uname" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  -s) printf '%s\n' "$TEST_UNAME_S" ;;
+  -m) printf '%s\n' "$TEST_UNAME_M" ;;
+  *) exit 2 ;;
+esac
+SH
+  cat > "$fakebin/curl" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$2" > "$CURL_URL"
+: > "$4"
+SH
+  cat > "$fakebin/sha256sum" <<'SH'
+#!/usr/bin/env bash
+printf '%s  %s\n' "$EXPECTED_SHA" "$1"
+SH
+  cat > "$fakebin/shasum" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = "-a" ] && [ "$2" = "256" ] || exit 2
+printf '%s  %s\n' "$EXPECTED_SHA" "$3"
+SH
+  cat > "$fakebin/tar" <<'SH'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-C" ]; then
+    mkdir -p "$2/shellcheck-v${TEST_VERSION}"
+    cat > "$2/shellcheck-v${TEST_VERSION}/shellcheck" <<EOF
+#!/usr/bin/env bash
+printf 'ShellCheck - shell script analysis tool\nversion: ${TEST_VERSION}\n'
+EOF
+    chmod +x "$2/shellcheck-v${TEST_VERSION}/shellcheck"
+    exit 0
+  fi
+  shift
+done
+exit 2
+SH
+  chmod +x "$fakebin/uname" "$fakebin/curl" "$fakebin/sha256sum" "$fakebin/shasum" "$fakebin/tar"
+
+  while IFS='|' read -r system machine expected_asset expected_sha; do
+    destination="$tmp/bin-$system-$machine"
+    expected_archive="shellcheck-v${REQUIRED}.${expected_asset}.tar.xz"
+    out=$(TEST_UNAME_S="$system" TEST_UNAME_M="$machine" \
+      TEST_VERSION="$REQUIRED" EXPECTED_SHA="$expected_sha" CURL_URL="$tmp/curl-url" \
+      PATH="$fakebin:$PATH" "$INSTALLER" "$destination" 2>&1) \
+      || fail "installer rejected supported platform $system/$machine"$'\n'"$out"
+    actual_url=$(cat "$tmp/curl-url")
+    assert_contains "$actual_url" "/$expected_archive" \
+      "installer selected the wrong asset for $system/$machine"
+  done <<'EOF'
+Linux|x86_64|linux.x86_64|8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+Darwin|arm64|darwin.aarch64|56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79
+Darwin|x86_64|darwin.x86_64|3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6
+EOF
+  pass "ShellCheck installer selects each supported platform asset"
+}
+
+test_installer_uses_shasum_fallback() {
+  local tmp fakebin destination out
+  tmp=$(fm_test_tmproot fm-shellcheck-shasum)
+  fakebin=$(fm_fakebin "$tmp")
+  destination="$tmp/bin"
+
+  cat > "$fakebin/uname" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  -s) printf 'Darwin\n' ;;
+  -m) printf 'arm64\n' ;;
+  *) exit 2 ;;
+esac
+SH
+  cat > "$fakebin/curl" <<'SH'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    : > "$2"
+    exit 0
+  fi
+  shift
+done
+exit 2
+SH
+  cat > "$fakebin/shasum" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = "-a" ] && [ "$2" = "256" ] || exit 2
+printf '56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79  %s\n' "$3"
+SH
+  cat > "$fakebin/tar" <<'SH'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-C" ]; then
+    mkdir -p "$2/shellcheck-v0.11.0"
+    cat > "$2/shellcheck-v0.11.0/shellcheck" <<'EOF'
+#!/usr/bin/env bash
+printf 'ShellCheck - shell script analysis tool\nversion: 0.11.0\n'
+EOF
+    chmod +x "$2/shellcheck-v0.11.0/shellcheck"
+    exit 0
+  fi
+  shift
+done
+exit 2
+SH
+  chmod +x "$fakebin/uname" "$fakebin/curl" "$fakebin/shasum" "$fakebin/tar"
+
+  out=$(PATH="$fakebin:/usr/bin:/bin" "$INSTALLER" "$destination" 2>&1) \
+    || fail "installer did not use the shasum fallback on Darwin"$'\n'"$out"
+  [ -x "$destination/shellcheck" ] || fail "installer did not install ShellCheck after shasum verification"
+  pass "ShellCheck installer uses shasum when sha256sum is unavailable"
+}
+
+test_installer_rejects_unsupported_platform() {
+  local tmp fakebin destination out rc
+  tmp=$(fm_test_tmproot fm-shellcheck-platform-unsupported)
+  fakebin=$(fm_fakebin "$tmp")
+  destination="$tmp/bin"
+
+  cat > "$fakebin/uname" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  -s) printf 'Plan9\n' ;;
+  -m) printf 'mips64\n' ;;
+  *) exit 2 ;;
+esac
+SH
+  cat > "$fakebin/curl" <<'SH'
+#!/usr/bin/env bash
+printf 'curl must not run for an unsupported platform\n' >&2
+exit 99
+SH
+  chmod +x "$fakebin/uname" "$fakebin/curl"
+
+  rc=0
+  out=$(PATH="$fakebin:$PATH" "$INSTALLER" "$destination" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "installer accepted unsupported platform Plan9/mips64"
+  assert_contains "$out" "fm-install-shellcheck.sh: unsupported platform: Plan9/mips64" \
+    "installer did not report the exact unsupported platform"
+  assert_not_contains "$out" "curl must not run" \
+    "installer attempted a download for an unsupported platform"
+  pass "ShellCheck installer rejects unsupported platforms before download"
+}
+
 test_installer_retries_transient_download_failure() {
   local tmp fakebin destination out
   tmp=$(fm_test_tmproot fm-shellcheck-download)
@@ -67,6 +215,14 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 exit 2
+SH
+  cat > "$fakebin/uname" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  -s) printf 'Linux\n' ;;
+  -m) printf 'x86_64\n' ;;
+  *) exit 2 ;;
+esac
 SH
   cat > "$fakebin/sha256sum" <<'SH'
 #!/usr/bin/env bash
@@ -92,7 +248,7 @@ SH
 #!/usr/bin/env bash
 exit 0
 SH
-  chmod +x "$fakebin/curl" "$fakebin/sha256sum" "$fakebin/tar" "$fakebin/sleep"
+  chmod +x "$fakebin/curl" "$fakebin/uname" "$fakebin/sha256sum" "$fakebin/tar" "$fakebin/sleep"
 
   out=$(CURL_COUNT="$tmp/curl-count" PATH="$fakebin:$PATH" "$INSTALLER" "$destination" 2>&1) \
     || fail "installer did not recover from a transient download failure"$'\n'"$out"
@@ -428,6 +584,9 @@ SH
 
 test_list_files_reports_the_shell_inventory
 test_pins_an_explicit_version
+test_installer_selects_supported_platform_assets
+test_installer_uses_shasum_fallback
+test_installer_rejects_unsupported_platform
 test_installer_retries_transient_download_failure
 test_rejects_wrong_shellcheck_version
 test_catches_a_real_lint_defect

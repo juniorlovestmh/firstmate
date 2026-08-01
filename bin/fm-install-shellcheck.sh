@@ -3,12 +3,33 @@
 #
 # Usage:
 #   fm-install-shellcheck.sh <destination-directory>
+# Supported release assets are Linux/x86_64, Darwin/arm64, and Darwin/x86_64.
+# The platform is selected from uname, and the archive is verified with
+# sha256sum or the macOS-compatible shasum fallback before installation.
 set -eu
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="$("$ROOT/bin/fm-lint.sh" --required-version)"
-SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
-ARCHIVE="shellcheck-v${VERSION}.linux.x86_64.tar.xz"
+PLATFORM="$(uname -s)/$(uname -m)"
+case "$PLATFORM" in
+  Linux/x86_64)
+    ASSET_PLATFORM=linux.x86_64
+    SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+    ;;
+  Darwin/arm64)
+    ASSET_PLATFORM=darwin.aarch64
+    SHA256=56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79
+    ;;
+  Darwin/x86_64)
+    ASSET_PLATFORM=darwin.x86_64
+    SHA256=3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6
+    ;;
+  *)
+    printf 'fm-install-shellcheck.sh: unsupported platform: %s\n' "$PLATFORM" >&2
+    exit 1
+    ;;
+esac
+ARCHIVE="shellcheck-v${VERSION}.${ASSET_PLATFORM}.tar.xz"
 URL="https://github.com/koalaman/shellcheck/releases/download/v${VERSION}/${ARCHIVE}"
 DESTINATION=${1:?usage: fm-install-shellcheck.sh <destination-directory>}
 TMP=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/fm-shellcheck.XXXXXX")
@@ -25,7 +46,16 @@ while ! curl -fsSL "$URL" -o "$TMP/$ARCHIVE"; do
   sleep "$download_attempt"
   download_attempt=$((download_attempt + 1))
 done
-ACTUAL_SHA256=$(sha256sum "$TMP/$ARCHIVE" | awk '{print $1}')
+if [ "${PLATFORM%%/*}" = Darwin ] && command -v shasum >/dev/null 2>&1; then
+  ACTUAL_SHA256=$(shasum -a 256 "$TMP/$ARCHIVE" | awk '{print $1}')
+elif command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL_SHA256=$(sha256sum "$TMP/$ARCHIVE" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL_SHA256=$(shasum -a 256 "$TMP/$ARCHIVE" | awk '{print $1}')
+else
+  printf 'fm-install-shellcheck.sh: need sha256sum or shasum to verify the archive\n' >&2
+  exit 1
+fi
 [ "$ACTUAL_SHA256" = "$SHA256" ] || {
   printf 'fm-install-shellcheck.sh: checksum mismatch for %s\n' "$ARCHIVE" >&2
   exit 1

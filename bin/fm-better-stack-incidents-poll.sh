@@ -23,7 +23,6 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 ERROR_DIR="$STATE/better-stack-incidents.diagnostics"
 ERROR_FILE="$ERROR_DIR/error"
-SEEN_DIR="$STATE/better-stack-incidents.seen"
 
 # Reuse the watcher's existing private-artifact owner rather than introducing a
 # second atomic-publication contract for one extension.
@@ -65,25 +64,21 @@ run_through_doppler() {
   fi
   case "$out" in
     '') return 0 ;;
-    *$'\n'*) emit_error_once "poll returned invalid multiline output" ;;
-    better-stack-incident\ opened\ *|better-stack-incidents\ opened\ *|better-stack-error\ *)
-      printf '%s\n' "$out"
+    *)
+      while IFS= read -r line; do
+        case "$line" in
+          better-stack-incident\ opened\ *|better-stack-error\ *) printf '%s\n' "$line" ;;
+          *) emit_error_once "poll returned invalid output"; return 0 ;;
+        esac
+      done <<< "$out"
       ;;
-    *) emit_error_once "poll returned invalid output" ;;
   esac
 }
 
-claim_incident() {
-  local id=$1 rc
-  printf 'seen\n' \
-    | fmx_private_artifact_publish_stdin_once "$SEEN_DIR" "$id" 600 2>/dev/null
-  rc=$?
-  return "$rc"
-}
-
 poll_with_injected_token() {
-  local token=${BETTER_STACK_API_TOKEN:-} raw code body rows id name started
-  local claim_rc new_count=0 new_ids= first_id= first_name= first_started=
+  local token=${BETTER_STACK_API_TOKEN:-} raw code body page_rows page_next
+  local id name started next_url='https://uptime.betterstack.com/api/v3/incidents?resolved=false&per_page=50'
+  local budget=${FM_CHECK_TIMEOUT:-30} started_at=$SECONDS elapsed remaining curl_timeout
 
   [ -n "$token" ] || { emit_error_once "missing BETTER_STACK_API_TOKEN"; return 0; }
   [[ "$token" =~ ^[A-Za-z0-9._~+/=-]+$ ]] \
@@ -91,67 +86,60 @@ poll_with_injected_token() {
   command -v curl >/dev/null 2>&1 || { emit_error_once "missing curl"; return 0; }
   command -v jq >/dev/null 2>&1 || { emit_error_once "missing jq"; return 0; }
 
-  raw=$(printf 'header = "Authorization: Bearer %s"\n' "$token" \
-    | curl \
-      --config - \
-      --request GET \
-      --url 'https://uptime.betterstack.com/api/v3/incidents?resolved=false&per_page=50' \
-      --header 'Accept: application/json' \
-      --connect-timeout 3 \
-      --max-time 5 \
-      --silent \
-      --show-error \
-      --write-out '\n%{http_code}' 2>/dev/null) \
-    || { emit_error_once "Better Stack API unreachable"; return 0; }
-  case "$raw" in
-    *$'\n'*) ;;
-    *) emit_error_once "Better Stack API returned no status"; return 0 ;;
-  esac
-  code=${raw##*$'\n'}
-  body=${raw%$'\n'*}
-  [ "$code" = 200 ] || { emit_error_once "API returned HTTP $code"; return 0; }
-
-  rows=$(printf '%s' "$body" | jq -r '
-    if (.data | type) != "array" then error("data must be an array") else .data[] end
-    | select(.type == "incident")
-    | select(.attributes.resolved_at == null)
-    | select(.id | type == "string" and test("^[0-9]+$"))
-    | [
-        .id,
-        ((.attributes.name // "unknown") | tostring | gsub("[[:space:][:cntrl:]]+"; " ") | .[0:120]),
-        ((.attributes.started_at // "unknown") | tostring | gsub("[[:space:][:cntrl:]]+"; " ") | .[0:64])
-      ]
-    | @tsv
-  ' 2>/dev/null) || { emit_error_once "invalid Better Stack API response"; return 0; }
+  rows=
+  while [ -n "$next_url" ]; do
+    elapsed=$((SECONDS - started_at))
+    remaining=$((budget - elapsed - 1))
+    [ "$remaining" -gt 0 ] || { emit_error_once "Better Stack API poll timed out"; return 0; }
+    curl_timeout=$remaining
+    [ "$curl_timeout" -gt 5 ] && curl_timeout=5
+    raw=$(printf 'header = "Authorization: Bearer %s"\n' "$token" \
+      | curl --config - --request GET --url "$next_url" \
+        --header 'Accept: application/json' --connect-timeout 3 \
+        --max-time "$curl_timeout" --silent --show-error \
+        --write-out '\n%{http_code}' 2>/dev/null) \
+      || { emit_error_once "Better Stack API unreachable"; return 0; }
+    case "$raw" in
+      *$'\n'*) ;;
+      *) emit_error_once "Better Stack API returned no status"; return 0 ;;
+    esac
+    code=${raw##*$'\n'}
+    body=${raw%$'\n'*}
+    [ "$code" = 200 ] || { emit_error_once "API returned HTTP $code"; return 0; }
+    page_rows=$(printf '%s' "$body" | jq -r '
+      if (.data | type) != "array" then error("data must be an array") else .data[] end
+      | select(.type == "incident")
+      | select(.attributes.resolved_at == null)
+      | select(.id | type == "string" and test("^[0-9]+$"))
+      | [
+          .id,
+          ((.attributes.name // "unknown") | tostring | gsub("[[:space:][:cntrl:]]+"; " ") | .[0:120]),
+          ((.attributes.started_at // "unknown") | tostring | gsub("[[:space:][:cntrl:]]+"; " ") | .[0:64])
+        ]
+      | @tsv
+    ' 2>/dev/null) || { emit_error_once "invalid Better Stack API response"; return 0; }
+    [ -z "$rows" ] || [ -z "$page_rows" ] || rows="$rows"$'\n'
+    rows="$rows$page_rows"
+    page_next=$(printf '%s' "$body" | jq -r '
+      if ((.pagination.next // null) != null and (.pagination.next | type) != "string")
+      then error("pagination.next must be a string")
+      else (.pagination.next // "") end
+    ' 2>/dev/null) || { emit_error_once "invalid Better Stack API response"; return 0; }
+    case "$page_next" in
+      '') next_url= ;;
+      https://uptime.betterstack.com/api/v3/incidents\?*)
+        case "$page_next" in *resolved=false*) next_url=$page_next ;; *) emit_error_once "invalid Better Stack pagination target"; return 0 ;; esac
+        ;;
+      *) emit_error_once "invalid Better Stack pagination target"; return 0 ;;
+    esac
+  done
 
   while IFS=$'\t' read -r id name started; do
     [ -n "$id" ] || continue
-    claim_incident "$id"
-    claim_rc=$?
-    case "$claim_rc" in
-      0)
-        new_count=$((new_count + 1))
-        if [ "$new_count" -eq 1 ]; then
-          first_id=$id
-          first_name=$name
-          first_started=$started
-          new_ids=$id
-        else
-          new_ids="$new_ids,$id"
-        fi
-        ;;
-      1) ;;
-      *) emit_error_once "cannot record incident dedupe state"; return 0 ;;
-    esac
+    printf 'better-stack-incident opened id=%s name=%s started=%s\n' "$id" "$name" "$started"
   done <<< "$rows"
 
   clear_error
-  case "$new_count" in
-    0) ;;
-    1) printf 'better-stack-incident opened id=%s name=%s started=%s\n' \
-      "$first_id" "$first_name" "$first_started" ;;
-    *) printf 'better-stack-incidents opened ids=%s\n' "$new_ids" ;;
-  esac
 }
 
 case "${1:-}" in

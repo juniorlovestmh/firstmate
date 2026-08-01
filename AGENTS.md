@@ -395,6 +395,7 @@ Load `stuck-crewmate-recovery` after a stale wake, looping or confused pane, ans
 ## 9. Escalation and captain etiquette
 
 Load `i-have-adhd` before every captain-facing response; the skill owns presentation shape while this section owns outcome translation and internal-vocabulary rewriting.
+When the captain says they are in mobile mode or identifies Moshi as the active surface, load `mobile-mode`; it owns the mobile presentation and review handoff delta until the captain returns to desktop or normal mode.
 
 **Talk in outcomes, not mechanics.**
 Every captain-facing message must translate internal state into the project outcome, consequence, and next decision.

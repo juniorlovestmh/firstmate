@@ -271,6 +271,7 @@ On session start the first mate detects what its required toolchain is missing o
 It installs automatically supported tools only after you say go; manual-only tools remain for you to install from the printed instructions.
 Required tools come in two parts: a universal toolchain every home needs regardless of backend, and a per-backend delta that follows the runtime backend actually resolved for this home.
 The universal toolchain is node, git, gh with GitHub auth via `gh auth login`, no-mistakes v1.31.2 or newer, gh-axi, chrome-devtools-axi, lavish-axi, compatible tasks-axi per "Backlog backend" above, and quota-axi.
+The observed fleet version manifest and checksummed offline mirror recovery procedure are in [`docs/toolchain-versions.md`](toolchain-versions.md), while `bin/fm-toolchain-mirror.sh` owns the snapshot and restore mechanics.
 This section is the single owner of that universal toolchain list; backend guides' prerequisites point here and add only their backend-specific tools.
 In that list, no-mistakes runs the validation pipeline, gh-axi, chrome-devtools-axi, and lavish-axi cover GitHub, browser, and rich-review operations, and tasks-axi plus quota-axi back backlog mutations and quota-aware array dispatch.
 The per-backend delta is required only for the backend resolved from `FM_BACKEND`, then `config/backend`, then runtime auto-detection, then default `tmux`, so a home is never told to install a tool an inactive backend or feature would need.
@@ -310,7 +311,7 @@ Skipped items, such as a destination checkout that does not yet gitignore the it
 Create an ordinary local file at `config/better-stack-incidents` in the one Firstmate home that should receive fleet incident notifications.
 The file is a presence flag with no secret content, is gitignored, and is deliberately not inherited into secondmate homes so one incident does not alert multiple supervisors.
 The next locked session-start bootstrap requires `doppler`, `curl`, and `jq`, writes `state/better-stack-incidents.check.sh`, and binds those exact shim bytes in `state/better-stack-incidents.check-trust` through `bin/fm-check-register.sh`.
-This uses the existing registered custom-check extension point: the watcher executes only a hash-validated private snapshot, applies `FM_CHECK_TIMEOUT`, and converts the poll's one-line output into a durable `check:` notification.
+This uses the existing registered custom-check extension point: the watcher executes only a hash-validated private snapshot, applies `FM_CHECK_TIMEOUT`, and converts each incident line in the poll output into a durable `check:` notification.
 The registered poll is a home-level supervision need even with no project work in flight and runs on the default `FM_CHECK_INTERVAL=300` slow-check cadence, which keeps normal detection within minutes without adding a second scheduler.
 
 `bin/fm-better-stack-incidents-poll.sh` invokes its poll child with `doppler run --silent --no-check-version --no-fallback --project fleet-observability --config prd --only-secrets BETTER_STACK_API_TOKEN`.
@@ -318,13 +319,15 @@ The registered poll is a home-level supervision need even with no project work i
 The token therefore remains runtime-only and must never be added to the flag, repository, logs, task instructions, or another local file.
 The poll requests unresolved incidents from Better Stack's documented [`GET /api/v3/incidents`](https://betterstack.com/docs/uptime/api/list-all-incidents/) endpoint with a five-second HTTP bound.
 
-A previously unseen incident ID creates `state/better-stack-incidents.seen/<id>` as a private single-link marker and prints one compact identity line.
-One response containing several unseen incidents prints one line containing all new IDs, so a check cycle still produces exactly one durable notification.
-Already-seen incidents and quiet API responses print nothing.
+A poll prints one compact identity line for each unresolved incident; it does not claim delivery state before the watcher appends the wake.
+The watcher owns the durable commit point: under the wake-queue lock it appends one `check:` record per incident, publishes the private identity-bound receipt at `state/better-stack-incidents.receipts/<id>`, and then publishes `state/better-stack-incidents.seen/<id>`.
+If the watcher stops after queue append, the receipt survives queue drain and the next watcher run completes the seen marker without appending a second wake.
+The poll emits every unresolved incident on each scan; the watcher suppresses already-delivered incident IDs, so repeated poll output normally remains silent at the durable wake boundary.
+If receipt publication itself fails after queue append and that queue record is drained before retry, a rare duplicate wake can occur; the wake handler deduplicates by incident ID.
 Missing credentials, Doppler access failure, network failure, non-success HTTP status, and malformed API data print one `better-stack-error ...` diagnostic and record it in `state/better-stack-incidents.diagnostics/error`; the same diagnostic then remains silent until a successful poll clears the marker or a different failure occurs.
 
 Remove `config/better-stack-incidents` and rerun locked session start to retire the runnable check and its trust binding.
-Bootstrap retains the private seen-ID and diagnostic markers so disabling and later re-enabling the poll cannot re-notify every still-open incident.
+Bootstrap retains the private seen-ID, receipt, and diagnostic markers so disabling and later re-enabling the poll cannot re-notify every still-open incident.
 Better Stack polling from heartbeat handling was an interim practice and is retired; the registered check is the only poll owner, while [`AGENTS.md` section 8](../AGENTS.md#8-supervision-protocol) owns incident triage after a notification arrives.
 
 ## X mode (.env)
