@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Poll Better Stack for unresolved incidents through the fleet-observability/prd
+# Doppler config.
+#
+# Usage: fm-better-stack-incidents-poll.sh
+#
+# The public entrypoint always launches itself through Doppler with fallback
+# files disabled and only BETTER_STACK_API_TOKEN injected.
+# The internal --from-doppler mode is used only by that child process and tests.
+#
+# Output is the authenticated custom-check contract consumed by fm-watch.sh:
+#   better-stack-incident opened id=<id> name=<name> started=<timestamp>
+#   better-stack-incidents opened ids=<comma-separated ids>
+#   better-stack-error <deduplicated diagnostic>
+# A quiet or already-seen result prints nothing.
+# The watcher provides the outer FM_CHECK_TIMEOUT; curl stays within five
+# seconds so the check finishes with margin.
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
+STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+ERROR_DIR="$STATE/better-stack-incidents.diagnostics"
+ERROR_FILE="$ERROR_DIR/error"
+SEEN_DIR="$STATE/better-stack-incidents.seen"
+
+# Reuse the watcher's existing private-artifact owner rather than introducing a
+# second atomic-publication contract for one extension.
+# shellcheck source=bin/fm-x-lib.sh disable=SC1091
+. "$SCRIPT_DIR/fm-x-lib.sh"
+
+emit_error_once() {
+  local msg=$1
+  if fmx_private_artifact_file_valid "$ERROR_DIR" error 600 \
+    && [ "$(cat "$ERROR_FILE" 2>/dev/null)" = "$msg" ]; then
+    return 0
+  fi
+  printf '%s\n' "$msg" \
+    | fmx_private_artifact_publish_stdin "$ERROR_DIR" error 600 2>/dev/null || true
+  printf 'better-stack-error %s\n' "$msg"
+}
+
+clear_error() {
+  fmx_private_artifact_file_valid "$ERROR_DIR" error 600 || return 0
+  rm -f -- "$ERROR_FILE" 2>/dev/null || true
+}
+
+run_through_doppler() {
+  local out rc
+  command -v doppler >/dev/null 2>&1 \
+    || { emit_error_once "missing doppler"; return 0; }
+  out=$(doppler run \
+    --silent \
+    --no-check-version \
+    --no-fallback \
+    --project fleet-observability \
+    --config prd \
+    --only-secrets BETTER_STACK_API_TOKEN \
+    -- "$SCRIPT_DIR/fm-better-stack-incidents-poll.sh" --from-doppler 2>/dev/null)
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    emit_error_once "Doppler access unavailable for fleet-observability/prd"
+    return 0
+  fi
+  case "$out" in
+    '') return 0 ;;
+    *$'\n'*) emit_error_once "poll returned invalid multiline output" ;;
+    better-stack-incident\ opened\ *|better-stack-incidents\ opened\ *|better-stack-error\ *)
+      printf '%s\n' "$out"
+      ;;
+    *) emit_error_once "poll returned invalid output" ;;
+  esac
+}
+
+claim_incident() {
+  local id=$1 rc
+  printf 'seen\n' \
+    | fmx_private_artifact_publish_stdin_once "$SEEN_DIR" "$id" 600 2>/dev/null
+  rc=$?
+  return "$rc"
+}
+
+poll_with_injected_token() {
+  local token=${BETTER_STACK_API_TOKEN:-} raw code body rows id name started
+  local claim_rc new_count=0 new_ids= first_id= first_name= first_started=
+
+  [ -n "$token" ] || { emit_error_once "missing BETTER_STACK_API_TOKEN"; return 0; }
+  [[ "$token" =~ ^[A-Za-z0-9._~+/=-]+$ ]] \
+    || { emit_error_once "invalid BETTER_STACK_API_TOKEN"; return 0; }
+  command -v curl >/dev/null 2>&1 || { emit_error_once "missing curl"; return 0; }
+  command -v jq >/dev/null 2>&1 || { emit_error_once "missing jq"; return 0; }
+
+  raw=$(printf 'header = "Authorization: Bearer %s"\n' "$token" \
+    | curl \
+      --config - \
+      --request GET \
+      --url 'https://uptime.betterstack.com/api/v3/incidents?resolved=false&per_page=50' \
+      --header 'Accept: application/json' \
+      --connect-timeout 3 \
+      --max-time 5 \
+      --silent \
+      --show-error \
+      --write-out '\n%{http_code}' 2>/dev/null) \
+    || { emit_error_once "Better Stack API unreachable"; return 0; }
+  case "$raw" in
+    *$'\n'*) ;;
+    *) emit_error_once "Better Stack API returned no status"; return 0 ;;
+  esac
+  code=${raw##*$'\n'}
+  body=${raw%$'\n'*}
+  [ "$code" = 200 ] || { emit_error_once "API returned HTTP $code"; return 0; }
+
+  rows=$(printf '%s' "$body" | jq -r '
+    if (.data | type) != "array" then error("data must be an array") else .data[] end
+    | select(.type == "incident")
+    | select(.attributes.resolved_at == null)
+    | select(.id | type == "string" and test("^[0-9]+$"))
+    | [
+        .id,
+        ((.attributes.name // "unknown") | tostring | gsub("[[:space:][:cntrl:]]+"; " ") | .[0:120]),
+        ((.attributes.started_at // "unknown") | tostring | gsub("[[:space:][:cntrl:]]+"; " ") | .[0:64])
+      ]
+    | @tsv
+  ' 2>/dev/null) || { emit_error_once "invalid Better Stack API response"; return 0; }
+
+  while IFS=$'\t' read -r id name started; do
+    [ -n "$id" ] || continue
+    claim_incident "$id"
+    claim_rc=$?
+    case "$claim_rc" in
+      0)
+        new_count=$((new_count + 1))
+        if [ "$new_count" -eq 1 ]; then
+          first_id=$id
+          first_name=$name
+          first_started=$started
+          new_ids=$id
+        else
+          new_ids="$new_ids,$id"
+        fi
+        ;;
+      1) ;;
+      *) emit_error_once "cannot record incident dedupe state"; return 0 ;;
+    esac
+  done <<< "$rows"
+
+  clear_error
+  case "$new_count" in
+    0) ;;
+    1) printf 'better-stack-incident opened id=%s name=%s started=%s\n' \
+      "$first_id" "$first_name" "$first_started" ;;
+    *) printf 'better-stack-incidents opened ids=%s\n' "$new_ids" ;;
+  esac
+}
+
+case "${1:-}" in
+  '') run_through_doppler ;;
+  --from-doppler)
+    [ "$#" -eq 1 ] || { emit_error_once "invalid poll invocation"; exit 0; }
+    poll_with_injected_token
+    ;;
+  *) emit_error_once "invalid poll invocation" ;;
+esac
