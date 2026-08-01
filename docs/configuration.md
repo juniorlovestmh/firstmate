@@ -11,7 +11,7 @@ The shared orchestrator behavior lives in [`AGENTS.md`](../AGENTS.md) - edit it 
 This section is the single owner of the top-level operational-home layout; producer script headers and their help own exact child-file fields and mutation contracts.
 The tracked code root contains the shared instruction, skill, documentation, workflow, and `bin/` surfaces, while each effective `FM_HOME` contains private operational directories.
 `data/` holds durable private fleet records such as the project and secondmate registries, captain preferences, optional shared captain preferences, learnings, backlog, briefs, and scout reports.
-`state/` holds volatile runtime records such as task metadata, append-only status events, endpoint signals, watcher and wake-queue coordination, away-mode state, generated X-mode artifacts, private secondmate config-reread generations with their retry and quarantine state, and parent-owned secondmate pending-reply records under `state/pending-replies/` (`bin/fm-pending-reply-lib.sh`).
+`state/` holds volatile runtime records such as task metadata, append-only status events, endpoint signals, watcher and wake-queue coordination, away-mode state, generated X-mode and Better Stack poll artifacts, private secondmate config-reread generations with their retry and quarantine state, and parent-owned secondmate pending-reply records under `state/pending-replies/` (`bin/fm-pending-reply-lib.sh`).
 `config/` holds local gitignored operating choices, and `projects/` holds the local project clones that Firstmate reads but changes only through the narrow guarded and concrete captain-approved exceptions in `AGENTS.md`.
 
 `bin/fm-spawn.sh` owns the base task-metadata fields it emits, while the runtime-backend section below owns backend-specific fields and selector interpretation.
@@ -304,6 +304,28 @@ When an allowlisted config item changes for an already-running home, it sends th
 The locked bootstrap inheritance pass uses the same per-home changed-set and reread path for already-running homes; see `secondmate-provisioning` for the single contract owner.
 That live discovery starts from `state/*.meta` records with `kind=secondmate`; `data/secondmates.md` only backfills `home=` for older or incomplete meta records.
 Skipped items, such as a destination checkout that does not yet gitignore the item, are visible warnings but not hard failures.
+
+## Better Stack incident monitoring (config/better-stack-incidents)
+
+Create an ordinary local file at `config/better-stack-incidents` in the one Firstmate home that should receive fleet incident notifications.
+The file is a presence flag with no secret content, is gitignored, and is deliberately not inherited into secondmate homes so one incident does not alert multiple supervisors.
+The next locked session-start bootstrap requires `doppler`, `curl`, and `jq`, writes `state/better-stack-incidents.check.sh`, and binds those exact shim bytes in `state/better-stack-incidents.check-trust` through `bin/fm-check-register.sh`.
+This uses the existing registered custom-check extension point: the watcher executes only a hash-validated private snapshot, applies `FM_CHECK_TIMEOUT`, and converts the poll's one-line output into a durable `check:` notification.
+The registered poll is a home-level supervision need even with no project work in flight and runs on the default `FM_CHECK_INTERVAL=300` slow-check cadence, which keeps normal detection within minutes without adding a second scheduler.
+
+`bin/fm-better-stack-incidents-poll.sh` invokes its poll child with `doppler run --silent --no-check-version --no-fallback --project fleet-observability --config prd --only-secrets BETTER_STACK_API_TOKEN`.
+`--no-fallback` prevents Doppler from reading or writing a fallback secret file, and the child passes the Better Stack bearer header to `curl` through standard input rather than a command argument or temporary header file.
+The token therefore remains runtime-only and must never be added to the flag, repository, logs, task instructions, or another local file.
+The poll requests unresolved incidents from Better Stack's documented [`GET /api/v3/incidents`](https://betterstack.com/docs/uptime/api/list-all-incidents/) endpoint with a five-second HTTP bound.
+
+A previously unseen incident ID creates `state/better-stack-incidents.seen/<id>` as a private single-link marker and prints one compact identity line.
+One response containing several unseen incidents prints one line containing all new IDs, so a check cycle still produces exactly one durable notification.
+Already-seen incidents and quiet API responses print nothing.
+Missing credentials, Doppler access failure, network failure, non-success HTTP status, and malformed API data print one `better-stack-error ...` diagnostic and record it in `state/better-stack-incidents.diagnostics/error`; the same diagnostic then remains silent until a successful poll clears the marker or a different failure occurs.
+
+Remove `config/better-stack-incidents` and rerun locked session start to retire the runnable check and its trust binding.
+Bootstrap retains the private seen-ID and diagnostic markers so disabling and later re-enabling the poll cannot re-notify every still-open incident.
+Better Stack polling from heartbeat handling was an interim practice and is retired; the registered check is the only poll owner, while [`AGENTS.md` section 8](../AGENTS.md#8-supervision-protocol) owns incident triage after a notification arrives.
 
 ## X mode (.env)
 
