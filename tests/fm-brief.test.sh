@@ -173,8 +173,70 @@ PERL
 test_help_includes_entire_header() {
   local help
   help=$("$ROOT/bin/fm-brief.sh" --help)
-  assert_contains "$help" "Refuses to overwrite an existing brief." "fm-brief.sh --help omitted its header terminator"
+  assert_contains "$help" "--force-regenerate archives an existing brief" \
+    "fm-brief.sh --help omitted archive-and-regenerate mechanics"
   pass "fm-brief.sh: --help renders the complete header"
+}
+
+test_existing_brief_refusal_detects_staleness_and_force_regenerates() {
+  local home id brief err out status archive_count archive
+  home="$TMP_ROOT/stale-brief-home"
+  id=stale-brief-guard
+  brief="$home/data/$id/brief.md"
+  err="$home/refusal.err"
+  out="$home/regenerate.out"
+  mkdir -p "$(dirname "$brief")"
+  printf '%s\n' 'months-old draft without current safety contracts' > "$brief"
+
+  status=0
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj > /dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "scaffolding over an existing stale brief must fail"
+  assert_grep "missing current scaffold safety marker" "$err" \
+    "existing stale brief refusal did not detect its missing safety marker"
+  assert_grep "Do not launch this brief unchanged" "$err" \
+    "existing stale brief refusal did not prevent unchanged launch"
+  assert_grep "--force-regenerate" "$err" \
+    "existing stale brief refusal did not name the archive-and-regenerate recovery"
+  assert_grep "months-old draft" "$brief" \
+    "ordinary refusal changed the existing stale brief"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --force-regenerate >"$out" 2>&1 \
+    || fail "--force-regenerate did not replace a stale brief safely"
+  assert_grep "firstmate-brief-scaffold-safety:v1" "$brief" \
+    "regenerated brief is missing the current scaffold safety marker"
+  assert_grep "archived existing brief:" "$out" \
+    "--force-regenerate did not report the archive path"
+  archive_count=$(find "$(dirname "$brief")" -maxdepth 1 -type f -name 'brief.md.archive-*' | wc -l | tr -d ' ')
+  [ "$archive_count" = 1 ] \
+    || fail "--force-regenerate must create exactly one archive, found $archive_count"
+  archive=$(find "$(dirname "$brief")" -maxdepth 1 -type f -name 'brief.md.archive-*' -print)
+  assert_grep "months-old draft without current safety contracts" "$archive" \
+    "--force-regenerate archive did not preserve the stale brief"
+  pass "fm-brief.sh: stale existing briefs fail loudly and force regeneration archives before replacing"
+}
+
+test_existing_current_brief_still_requires_freshness_verification() {
+  local home id brief err status
+  home="$TMP_ROOT/current-brief-home"
+  id=current-brief-guard
+  err="$home/refusal.err"
+  mkdir -p "$home/data"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj >/dev/null 2>&1 \
+    || fail "current brief fixture did not scaffold"
+  brief="$home/data/$id/brief.md"
+  assert_grep "firstmate-brief-scaffold-safety:v1" "$brief" \
+    "fresh brief fixture is missing the current scaffold safety marker"
+
+  status=0
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "scaffolding over an existing current brief must still fail"
+  assert_grep "current scaffold safety marker is present" "$err" \
+    "existing current brief refusal did not report marker status"
+  assert_grep "task freshness is unverified" "$err" \
+    "existing current brief refusal falsely treated its marker as freshness proof"
+  assert_grep "verify it intentionally, or rerun with --force-regenerate" "$err" \
+    "existing current brief refusal did not give both safe recovery choices"
+  pass "fm-brief.sh: a current safety marker never substitutes for task freshness verification"
 }
 
 # Registry with one project per delivery mode, so each ship-mode DOD branch is
@@ -621,6 +683,8 @@ test_scout_and_secondmate_scaffold() {
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
+test_existing_brief_refusal_detects_staleness_and_force_regenerates
+test_existing_current_brief_still_requires_freshness_verification
 test_ship_modes_generate_clean_briefs
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording

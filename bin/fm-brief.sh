@@ -6,8 +6,8 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--herdr-lab]
-#        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
+# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--herdr-lab] [--force-regenerate]
+#        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects} [--force-regenerate]
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
 #   --secondmate writes a persistent secondmate charter. The project list
@@ -26,6 +26,11 @@
 #   The flag must be explicit because {TASK} is filled after scaffolding and the
 #   caller-supplied repo string cannot reliably identify this repo. Briefs made
 #   without it carry a loud declaration so an omitted contract cannot be silent.
+#   Every generated brief carries a versioned scaffold safety marker.
+#   When an existing brief is present, the refusal reports whether that marker
+#   is current but never treats the marker as proof that the task text is fresh.
+#   --force-regenerate archives an existing brief beside it before writing a
+#   fresh scaffold; it never silently clobbers the previous content.
 # For ship tasks, the definition of done is shaped by the project's delivery mode
 # (data/projects.md via fm-project-mode.sh; see the project-management skill
 # and AGENTS.md task lifecycle):
@@ -44,7 +49,7 @@
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
 # over copied detail) and has the crewmate add the fm-ensure-agents-md.sh
 # self-governance section when a touched project AGENTS.md lacks it.
-# Refuses to overwrite an existing brief.
+# Refuses to overwrite or silently reuse an existing brief.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,6 +99,7 @@ fi
 KIND=ship
 HERDR_LAB=0
 NO_PROJECTS=0
+FORCE_REGENERATE=0
 POS=()
 for a in "$@"; do
   case "$a" in
@@ -101,10 +107,16 @@ for a in "$@"; do
     --secondmate) KIND=secondmate ;;
     --herdr-lab) HERDR_LAB=1 ;;
     --no-projects) NO_PROJECTS=1 ;;
+    --force-regenerate) FORCE_REGENERATE=1 ;;
     *) POS+=("$a") ;;
   esac
 done
-ID=${POS[0]}
+ID=${POS[0]:-}
+
+if [ -z "$ID" ]; then
+  echo "error: task id is required" >&2
+  exit 1
+fi
 
 if [ "$KIND" = secondmate ] && [ "$HERDR_LAB" -eq 1 ]; then
   echo "error: --herdr-lab applies only to crewmate ship or scout briefs" >&2
@@ -117,8 +129,43 @@ if [ "$NO_PROJECTS" -eq 1 ] && [ "$KIND" != secondmate ]; then
 fi
 
 BRIEF="$DATA/$ID/brief.md"
-[ -e "$BRIEF" ] && { echo "error: $BRIEF already exists" >&2; exit 1; }
-mkdir -p "$DATA/$ID"
+BRIEF_SAFETY_MARKER='<!-- firstmate-brief-scaffold-safety:v1 -->'
+
+brief_has_current_safety_marker() {
+  [ -f "$BRIEF" ] && grep -Fqx "$BRIEF_SAFETY_MARKER" "$BRIEF"
+}
+
+prepare_brief_path() {
+  local archive_base archive timestamp suffix
+  mkdir -p "$DATA/$ID"
+  [ -e "$BRIEF" ] || return 0
+
+  if [ "$FORCE_REGENERATE" -ne 1 ]; then
+    echo "error: $BRIEF already exists; refusing to overwrite or silently reuse it" >&2
+    if brief_has_current_safety_marker; then
+      echo "error: current scaffold safety marker is present, but task freshness is unverified" >&2
+      echo "error: inspect $BRIEF and verify it intentionally, or rerun with --force-regenerate to archive it and write a fresh scaffold" >&2
+    else
+      echo "error: missing current scaffold safety marker; this brief may predate current safety contracts" >&2
+      echo "error: Do not launch this brief unchanged; rerun the same scaffold command with --force-regenerate to archive it and write a fresh scaffold" >&2
+    fi
+    return 1
+  fi
+
+  timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+  archive_base="$BRIEF.archive-$timestamp"
+  archive=$archive_base
+  suffix=1
+  while [ -e "$archive" ]; do
+    archive="$archive_base.$suffix"
+    suffix=$((suffix + 1))
+  done
+  mv -- "$BRIEF" "$archive" || {
+    echo "error: could not archive existing brief: $BRIEF" >&2
+    return 1
+  }
+  echo "archived existing brief: $archive"
+}
 
 shell_quote() {
   printf "'"
@@ -140,6 +187,7 @@ if [ "$NO_PROJECTS" -eq 1 ]; then
 else
   [ -n "$SECONDMATE_PROJECTS" ] || { echo "error: --secondmate requires at least one project, or --no-projects for a project-less home" >&2; exit 1; }
 fi
+prepare_brief_path || exit 1
 SECONDMATE_CHARTER=${FM_SECONDMATE_CHARTER:-"{TASK}"}
 SECONDMATE_SCOPE=${FM_SECONDMATE_SCOPE:-${FM_SECONDMATE_CHARTER:-"{TASK}"}}
 if [ "$NO_PROJECTS" -eq 1 ]; then
@@ -150,6 +198,7 @@ else
   PROJECT_CLONES_NOTE="The projects above are local clones for work you supervise; they are not an exclusive ownership claim."
 fi
 cat > "$BRIEF" <<EOF
+$BRIEF_SAFETY_MARKER
 You are a persistent second mate managed by the main firstmate. Work on your own; do not wait for a human.
 
 # Charter
@@ -213,7 +262,12 @@ fi
 exit 0
 fi
 
-REPO=${POS[1]}
+REPO=${POS[1]:-}
+if [ -z "$REPO" ]; then
+  echo "error: repo name is required for ship and scout briefs" >&2
+  exit 1
+fi
+prepare_brief_path || exit 1
 
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
@@ -249,6 +303,7 @@ fi
 
 if [ "$KIND" = scout ]; then
 cat > "$BRIEF" <<EOF
+$BRIEF_SAFETY_MARKER
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
 # Task
@@ -357,6 +412,7 @@ esac
 DOD=${DOD%$'\n'}
 
 cat > "$BRIEF" <<EOF
+$BRIEF_SAFETY_MARKER
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
 # Task
