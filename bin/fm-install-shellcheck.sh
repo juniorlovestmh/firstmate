@@ -3,6 +3,9 @@
 #
 # Usage:
 #   fm-install-shellcheck.sh <destination-directory>
+# Supported release assets are Linux/x86_64, Darwin/arm64, and Darwin/x86_64.
+# The platform is selected from uname, and the archive is verified with
+# sha256sum or the macOS-compatible shasum fallback before installation.
 set -eu
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
