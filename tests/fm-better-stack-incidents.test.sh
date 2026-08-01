@@ -218,6 +218,53 @@ SH
   pass "registered Better Stack poll delivers exactly one authenticated check wake"
 }
 
+test_incident_receipt_recovers_after_marker_failure_and_queue_drain() {
+  local dir state shim body out rc
+  dir=$(make_case receipt-recovery)
+  state="$dir/home/state"
+  shim="$state/better-stack-incidents.check.sh"
+  body=$(incident_body 92 recovery-production)
+  cat > "$shim" <<SH
+#!/usr/bin/env bash
+export FM_HOME=$(printf '%q' "$dir/home")
+exec $(printf '%q' "$POLL")
+SH
+  chmod 0700 "$shim"
+  FM_HOME="$dir/home" "$REGISTER" better-stack-incidents >/dev/null \
+    || fail "could not register receipt-recovery custom check"
+  printf 'not-a-directory\n' > "$state/better-stack-incidents.seen"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" \
+    FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" \
+    FM_TEST_DOPPLER_LOG="$dir/doppler.log" FM_TEST_CURL_LOG="$dir/curl.log" \
+    FM_TEST_CURL_COUNT="$dir/curl.count" FM_TEST_BETTER_STACK_TOKEN=synthetic-test-token \
+    FM_TEST_API_BODY="$body" FM_TEST_API_CODE=200 \
+    FM_CHECK_INTERVAL=0 FM_HEARTBEAT=999999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    "$WATCH"); rc=$?
+  [ "$rc" -ne 0 ] || fail "marker publication failure must stop the watcher"
+  assert_present "$state/better-stack-incidents.receipts/92" \
+    "queue append failure boundary must leave a private recovery receipt"
+  [ "$(grep -c 'better-stack-incident opened id=92' "$state/.wake-queue")" -eq 1 ] \
+    || fail "failed marker publication must retain exactly one queued wake"
+  rm -f "$state/.wake-queue"
+  rm -f "$state/better-stack-incidents.seen"
+  mkdir "$state/better-stack-incidents.seen"
+  chmod 700 "$state/better-stack-incidents.seen"
+  rm -f "$state/.last-check"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" \
+    FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" \
+    FM_TEST_DOPPLER_LOG="$dir/doppler.log" FM_TEST_CURL_LOG="$dir/curl.log" \
+    FM_TEST_CURL_COUNT="$dir/curl.count" FM_TEST_BETTER_STACK_TOKEN=synthetic-test-token \
+    FM_TEST_API_BODY="$body" FM_TEST_API_CODE=200 \
+    FM_CHECK_INTERVAL=0 FM_HEARTBEAT=999999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    "$WATCH"); rc=$?
+  expect_code 0 "$rc" "receipt recovery watcher exit"
+  assert_present "$state/better-stack-incidents.seen/92" \
+    "receipt recovery must converge the private seen marker after queue drain"
+  [ ! -e "$state/.wake-queue" ] || [ -z "$(cat "$state/.wake-queue")" ] \
+    || fail "receipt recovery after queue drain must not append a duplicate wake"
+  pass "incident receipt recovers marker publication after queue drain"
+}
+
 test_bootstrap_arms_and_retires_home_check() {
   local dir home out sum1 sum2
   dir=$(make_case bootstrap)
@@ -274,5 +321,6 @@ test_pagination_and_unsafe_target_rejection
 test_api_error_reports_once_and_recovers
 test_missing_token_reports_once
 test_registered_check_delivers_check_wake
+test_incident_receipt_recovers_after_marker_failure_and_queue_drain
 test_bootstrap_arms_and_retires_home_check
 test_incident_check_keeps_home_supervised

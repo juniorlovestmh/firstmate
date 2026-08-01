@@ -728,8 +728,8 @@ EOF
 # A presence flag at config/better-stack-incidents materializes one ordinary
 # registered custom check, so the existing hash-bound snapshot execution and
 # FM_CHECK_TIMEOUT contract remain the only slow-check mechanism.
-# The poll itself performs runtime-only Doppler injection and owns incident and
-# diagnostic dedupe in this home's private state.
+# The poll itself performs runtime-only Doppler injection; the watcher owns
+# incident delivery dedupe while the poll owns diagnostic dedupe.
 better_stack_incidents_setup() {
   local flag check trust check_body tool missing check_home failed
   flag="$CONFIG/better-stack-incidents"
