@@ -271,7 +271,8 @@ test_bootstrap_arms_and_retires_home_check() {
   home="$dir/home"
   : > "$home/config/better-stack-incidents"
 
-  out=$(FM_HOME="$home" "$ROOT/bin/fm-bootstrap.sh" 2>/dev/null)
+  out=$(PATH="$dir/fakebin:$BASE_PATH" \
+    FM_HOME="$home" "$ROOT/bin/fm-bootstrap.sh" 2>/dev/null)
   assert_contains "$out" 'BETTER_STACK: incident monitoring on' \
     "bootstrap must announce Better Stack incident monitoring"
   assert_present "$home/state/better-stack-incidents.check.sh" \
@@ -285,13 +286,15 @@ test_bootstrap_arms_and_retires_home_check() {
 
   sum1=$(cat "$home/state/better-stack-incidents.check.sh" \
     "$home/state/better-stack-incidents.check-trust" | shasum)
-  FM_HOME="$home" "$ROOT/bin/fm-bootstrap.sh" >/dev/null 2>&1
+  PATH="$dir/fakebin:$BASE_PATH" \
+    FM_HOME="$home" "$ROOT/bin/fm-bootstrap.sh" >/dev/null 2>&1
   sum2=$(cat "$home/state/better-stack-incidents.check.sh" \
     "$home/state/better-stack-incidents.check-trust" | shasum)
   [ "$sum1" = "$sum2" ] || fail "bootstrap incident activation must be idempotent"
 
   rm "$home/config/better-stack-incidents"
-  out=$(FM_HOME="$home" "$ROOT/bin/fm-bootstrap.sh" 2>/dev/null)
+  out=$(PATH="$dir/fakebin:$BASE_PATH" \
+    FM_HOME="$home" "$ROOT/bin/fm-bootstrap.sh" 2>/dev/null)
   assert_contains "$out" 'BETTER_STACK: incident monitoring off' \
     "bootstrap must announce removal of an armed incident poll"
   assert_absent "$home/state/better-stack-incidents.check.sh" \
