@@ -17,7 +17,9 @@
 #                 "NUDGE_SECONDMATES: secondmate <id>: send failed: <reason>",
 #                 "BOOTSTRAP_INFO: nudged fm-<id> with '<message>'",
 #                 "SECONDMATE_LIVENESS: secondmate <id>: skipped: <reason>|respawn failed after <cause>: <reason>",
-#                 "FMX: X mode on ..." or "FMX: X mode off ...".
+#                 "FMX: X mode on ..." or "FMX: X mode off ...",
+#                 "BETTER_STACK: incident monitoring on ..." or
+#                 "BETTER_STACK: incident monitoring off ...".
 #          When a RUNNING secondmate worktree is fast-forwarded to firstmate's
 #          own current default-branch commit (a purely LOCAL fast-forward, never
 #          an origin fetch) AND its loaded instruction surface (AGENTS.md, bin/,
@@ -73,15 +75,16 @@
 #          refresh relays any completed fm-fleet-sync.sh output before the
 #          aggregate timeout skip line with timeout and elapsed seconds.
 #          Set FM_FLEET_PRUNE=0 to skip branch pruning during that refresh.
-#          Set FM_BOOTSTRAP_DETECT_ONLY=1 to skip the five MUTATING sweeps
+#          Set FM_BOOTSTRAP_DETECT_ONLY=1 to skip the six MUTATING sweeps
 #          (PR-check migration, secondmate_sync, secondmate_liveness_sweep,
-#          x_mode_setup, fleet_sync) while still printing every read-only detect line
+#          x_mode_setup, better_stack_incidents_setup, fleet_sync) while still
+#          printing every read-only detect line
 #          above; the TANGLE line switches to advisory-only wording with no
 #          checkout command. Used by
 #          fm-session-start.sh's read-only path when another live session holds
 #          the fleet lock, so a second concurrent session never race-mutates
-#          PR-check artifacts, secondmate homes, X-mode artifacts, project
-#          clones, or repair instructions.
+#          PR-check artifacts, secondmate homes, X-mode or Better Stack poll
+#          artifacts, project clones, or repair instructions.
 #          Unset/0 (the default) runs every sweep exactly as before - this flag
 #          is purely additive.
 #        fm-bootstrap.sh install <tool>...
@@ -107,6 +110,10 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-startup-memory-budget-lib.sh"
 # shellcheck source=bin/fm-x-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-x-lib.sh"
+# shellcheck source=bin/fm-pr-lib.sh disable=SC1091
+. "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-check-lib.sh disable=SC1091
+. "$SCRIPT_DIR/fm-check-lib.sh"
 # shellcheck source=bin/fm-backend.sh disable=SC1091
 . "$SCRIPT_DIR/fm-backend.sh"
 
@@ -503,6 +510,7 @@ install_cmd() {
 
 manual_install_url() {
   case "$1" in
+    doppler) echo "https://docs.doppler.com/docs/install-cli" ;;
     herdr) echo "https://herdr.dev" ;;
     *) return 1 ;;
   esac
@@ -557,7 +565,7 @@ no_mistakes_compatible() {
   [ "$patch" -ge "$NO_MISTAKES_MIN_PATCH" ]
 }
 
-x_mode_write_if_changed() {
+bootstrap_write_if_changed() {
   local dest=$1 content=$2 mode=$3 parent tmp parent_device current_mode
   parent=${dest%/*}
   [ "$parent" != "$dest" ] || return 1
@@ -578,7 +586,7 @@ x_mode_write_if_changed() {
       return 0
     fi
   fi
-  tmp=$(umask 077; mktemp "$parent/.fm-x-mode.XXXXXX" 2>/dev/null) || return 1
+  tmp=$(umask 077; mktemp "$parent/.fm-bootstrap-artifact.XXXXXX" 2>/dev/null) || return 1
   if ! printf '%s\n' "$content" > "$tmp" \
     || ! chmod "$mode" "$tmp" \
     || ! fmx_single_link_file_mode_valid "$tmp" "$mode" "$parent_device"; then
@@ -699,7 +707,7 @@ x_mode_setup() {
       ;;
   esac
   shim_body=$(fmx_poll_shim_content "$shim_home" "$FM_ROOT")
-  x_mode_write_if_changed "$shim" "$shim_body" 700 || { fmx_arm_failed; return 0; }
+  bootstrap_write_if_changed "$shim" "$shim_body" 700 || { fmx_arm_failed; return 0; }
   fmx_poll_shim_valid "$shim" "$shim_home" "$FM_ROOT" \
     || { fmx_arm_failed; return 0; }
 
@@ -711,9 +719,95 @@ x_mode_setup() {
 export FM_CHECK_INTERVAL=30
 EOF
 )
-  x_mode_write_if_changed "$cadence" "$cadence_body" 600 || { fmx_arm_failed; return 0; }
+  bootstrap_write_if_changed "$cadence" "$cadence_body" 600 || { fmx_arm_failed; return 0; }
 
   echo "FMX: X mode on - relay poll armed via state/x-watch.check.sh; 30s watcher cadence in config/x-mode.env"
+}
+
+# Better Stack incident monitoring is an explicit home-local opt-in.
+# A presence flag at config/better-stack-incidents materializes one ordinary
+# registered custom check, so the existing hash-bound snapshot execution and
+# FM_CHECK_TIMEOUT contract remain the only slow-check mechanism.
+# The poll itself performs runtime-only Doppler injection; the watcher owns
+# incident delivery dedupe while the poll owns diagnostic dedupe.
+better_stack_incidents_setup() {
+  local flag check trust check_body tool missing check_home failed
+  flag="$CONFIG/better-stack-incidents"
+  check="$STATE/better-stack-incidents.check.sh"
+  trust="$STATE/better-stack-incidents.check-trust"
+
+  better_stack_remove_artifacts() {
+    local remove_failed=0
+    x_mode_remove_artifact "$check" || remove_failed=1
+    x_mode_remove_artifact "$trust" || remove_failed=1
+    [ "$remove_failed" -eq 0 ]
+  }
+
+  if [ ! -e "$flag" ] && [ ! -L "$flag" ]; then
+    if x_mode_artifact_present "$check" || x_mode_artifact_present "$trust"; then
+      if better_stack_remove_artifacts; then
+        echo "BETTER_STACK: incident monitoring off - removed the home-scoped poll"
+      else
+        echo "BETTER_STACK: incident monitoring off - failed to remove the home-scoped poll"
+      fi
+    fi
+    return 0
+  fi
+  if [ ! -f "$flag" ] || [ -L "$flag" ] || [ "$(fm_pr_file_link_count "$flag")" != 1 ]; then
+    better_stack_remove_artifacts || true
+    echo "BETTER_STACK: incident monitoring off - config/better-stack-incidents must be an ordinary file"
+    return 0
+  fi
+
+  missing=0
+  for tool in doppler curl jq; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      missing_tool_diagnostic "$tool"
+      missing=1
+    fi
+  done
+  if [ "$missing" -ne 0 ]; then
+    better_stack_remove_artifacts || true
+    echo "BETTER_STACK: incident monitoring off - install the reported poll dependencies and rerun bootstrap"
+    return 0
+  fi
+
+  failed=0
+  mkdir -p "$STATE" 2>/dev/null || failed=1
+  if [ "$failed" -eq 0 ]; then
+    case "$FM_HOME" in
+      /*) check_home=$FM_HOME ;;
+      *)
+        check_home=$(CDPATH='' cd -- "$FM_HOME" 2>/dev/null && pwd -P) || failed=1
+        ;;
+    esac
+  fi
+  if [ "$failed" -eq 0 ]; then
+    check_body=$(printf '%s\n' \
+      '#!/usr/bin/env bash' \
+      '# Auto-generated by fm-bootstrap.sh - Better Stack incident custom check.' \
+      '# Registered bytes call the tracked poll; output becomes a check: wake.' \
+      "export FM_HOME=$(printf '%q' "$check_home")" \
+      "exec $(printf '%q' "$FM_ROOT/bin/fm-better-stack-incidents-poll.sh")")
+    bootstrap_write_if_changed "$check" "$check_body" 700 || failed=1
+  fi
+  if [ "$failed" -eq 0 ] && ! fm_custom_check_registered "$STATE" better-stack-incidents; then
+    FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_ROOT_OVERRIDE="$FM_ROOT" \
+      "$SCRIPT_DIR/fm-check-register.sh" better-stack-incidents >/dev/null 2>&1 || failed=1
+  fi
+  if [ "$failed" -eq 0 ]; then
+    fm_custom_check_registered "$STATE" better-stack-incidents || failed=1
+  fi
+  if [ "$failed" -ne 0 ]; then
+    if better_stack_remove_artifacts; then
+      echo "BETTER_STACK: incident monitoring off - failed to arm the home-scoped poll"
+    else
+      echo "BETTER_STACK: incident monitoring off - failed to arm the home-scoped poll; stale artifacts remain"
+    fi
+    return 0
+  fi
+
+  echo "BETTER_STACK: incident monitoring on - registered state/better-stack-incidents.check.sh at the default 300s check cadence"
 }
 
 crew_dispatch_validate() {
@@ -900,6 +994,7 @@ if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ]; then
   secondmate_liveness_sweep
   secondmate_sync
   x_mode_setup
+  better_stack_incidents_setup
   fleet_sync
 fi
 exit 0
