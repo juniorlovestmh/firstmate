@@ -164,6 +164,10 @@ block_stop() {
     printf '●  TURN WOULD END BLIND - SUPERVISION IS OFF\n'
     if [ "$FM_SUP_IN_FLIGHT" -gt 0 ]; then
       printf '●  %s task(s) in flight, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_IN_FLIGHT" "$FM_SUP_BEACON_DESC"
+    elif [ -f "$STATE/better-stack-incidents.check.sh" ] && [ -f "$STATE/x-watch.check.sh" ]; then
+      printf '●  X-mode relay and Better Stack incident monitoring need supervision, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_BEACON_DESC"
+    elif [ -f "$STATE/better-stack-incidents.check.sh" ]; then
+      printf '●  Better Stack incident monitoring needs supervision, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_BEACON_DESC"
     else
       printf '●  X-mode relay polling needs supervision, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_BEACON_DESC"
     fi
@@ -229,6 +233,10 @@ if [ "$COUNT" -gt "$BLOCK_BUDGET" ]; then
   budget_reset
   if [ "$FM_SUP_IN_FLIGHT" -gt 0 ]; then
     NEED_DESC="$FM_SUP_IN_FLIGHT task(s) in flight"
+  elif [ -f "$STATE/better-stack-incidents.check.sh" ] && [ -f "$STATE/x-watch.check.sh" ]; then
+    NEED_DESC="X-mode relay and Better Stack incident monitoring active"
+  elif [ -f "$STATE/better-stack-incidents.check.sh" ]; then
+    NEED_DESC="Better Stack incident monitoring active"
   else
     NEED_DESC="X-mode relay polling active"
   fi
