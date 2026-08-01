@@ -68,6 +68,11 @@ SH
 #!/usr/bin/env bash
 printf '%s  %s\n' "$EXPECTED_SHA" "$1"
 SH
+  cat > "$fakebin/shasum" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = "-a" ] && [ "$2" = "256" ] || exit 2
+printf '%s  %s\n' "$EXPECTED_SHA" "$3"
+SH
   cat > "$fakebin/tar" <<'SH'
 #!/usr/bin/env bash
 while [ "$#" -gt 0 ]; do
@@ -84,7 +89,7 @@ EOF
 done
 exit 2
 SH
-  chmod +x "$fakebin/uname" "$fakebin/curl" "$fakebin/sha256sum" "$fakebin/tar"
+  chmod +x "$fakebin/uname" "$fakebin/curl" "$fakebin/sha256sum" "$fakebin/shasum" "$fakebin/tar"
 
   while IFS='|' read -r system machine expected_asset expected_sha; do
     destination="$tmp/bin-$system-$machine"
