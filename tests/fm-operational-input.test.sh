@@ -48,6 +48,27 @@ test_current_generic_matrix() {
   pass "operational input: every current generic envelope retains its exact structured kind"
 }
 
+test_launch_brief_cli_carries_dispatch_provenance() {
+  local encoded stripped
+  encoded=$(printf '%s' 'CREWMATE_BRIEF_BODY' | "$OWNER" encode launch-brief) \
+    || fail "launch-brief CLI encoding failed"
+  [ "$(kind_cli "$encoded")" = launch-brief ] \
+    || fail "launch-brief provenance changed the structured kind"
+  stripped=$(printf '%s' "$encoded" | "$OWNER" body) \
+    || fail "launch-brief provenance body could not be recovered"
+  assert_contains "$stripped" "This is a genuine Firstmate dispatch." \
+    "launch-brief did not identify itself as genuine Firstmate dispatch"
+  assert_contains "$stripped" "canonical operational-input encoder" \
+    "launch-brief did not explain the typed envelope's owning encoder"
+  assert_contains "$stripped" "not project content" \
+    "launch-brief did not distinguish its provenance envelope from project content"
+  assert_contains "$stripped" "proceed with the brief below" \
+    "launch-brief did not tell the worker that proceeding is expected"
+  assert_contains "$stripped" "CREWMATE_BRIEF_BODY" \
+    "launch-brief provenance dropped the original brief body"
+  pass "operational input: launch briefs explain their canonical Firstmate provenance before the task body"
+}
+
 test_current_from_firstmate_carrier() {
   local encoded parsed separator
   separator=$(printf '\342\201\243')
@@ -152,6 +173,7 @@ test_invalid_current_encodings_are_rejected() {
 }
 
 test_current_generic_matrix
+test_launch_brief_cli_carries_dispatch_provenance
 test_current_from_firstmate_carrier
 test_landed_untyped_prefix_is_explicitly_legacy
 test_isolated_legacy_matrix

@@ -688,9 +688,6 @@ families_for_changed_path() {
     bin/fm-ff-lib.sh|bin/fm-gotmp*|bin/*pretool*)
       printf '%s\n' pure-contract-unit
       ;;
-    .agents/skills/*/SKILL.md)
-      printf '%s\n' pure-contract-unit
-      ;;
     .github/workflows/ci.yml|.no-mistakes.yaml)
       printf '%s\n' pure-contract-unit
       printf '%s\n' real-herdr-gated
@@ -698,6 +695,9 @@ families_for_changed_path() {
     docs/fm-test-portable-shards.md|docs/fm-test-isolation-proof.md|\
     docs/fm-test-isolation-proof.json|docs/secrets-*|docs/examples/project-secrets-policy.json|\
     docs/examples/doppler-*-job.yml|.agents/skills/secrets-management/SKILL.md)
+      printf '%s\n' pure-contract-unit
+      ;;
+    .agents/skills/*/SKILL.md)
       printf '%s\n' pure-contract-unit
       ;;
     .github/*|.tasks.toml|AGENTS.md|CLAUDE.md|CONTRIBUTING.md|\
