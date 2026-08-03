@@ -43,6 +43,40 @@ old_key_count=$(printf '%s\n' "$old_keys" | awk 'NF { count++ } END { print coun
 old_key_id=$(printf '%s\n' "$old_keys" | awk 'NF { print; exit }')
 
 policy_changed=0
+key_created=0
+key_cleanup_armed=1
+new_key_id=""
+
+find_new_key() {
+  local current_keys current_key_count old_key_present candidate_count
+  current_keys=$(gcloud iam service-accounts keys list \
+    --iam-account="$SERVICE_ACCOUNT" --managed-by=user --format='value(name.basename())') || return 1
+  current_key_count=$(printf '%s\n' "$current_keys" | awk 'NF { count++ } END { print count + 0 }')
+  old_key_present=$(printf '%s\n' "$current_keys" | awk -v old="$old_key_id" '$0 == old { print "yes"; exit }')
+  if [ "$current_key_count" -eq 1 ] && [ "$old_key_present" = "yes" ]; then
+    return 0
+  fi
+  [ "$current_key_count" -eq 2 ] && [ "$old_key_present" = "yes" ] || return 1
+  candidate_count=$(printf '%s\n' "$current_keys" | awk -v old="$old_key_id" '$0 != old && NF { count++ } END { print count + 0 }')
+  [ "$candidate_count" -eq 1 ] || return 1
+  new_key_id=$(printf '%s\n' "$current_keys" | awk -v old="$old_key_id" '$0 != old && NF { print; exit }')
+}
+
+cleanup_new_key() {
+  [ "$key_created" -eq 1 ] || return 0
+  if [ -z "$new_key_id" ]; then
+    find_new_key || {
+      printf 'fm-fleet-inventory-rotate.sh: cannot identify the replacement key for cleanup\n' >&2
+      return 1
+    }
+  fi
+  if [ -n "$new_key_id" ]; then
+    gcloud iam service-accounts keys delete "$new_key_id" \
+      --iam-account="$SERVICE_ACCOUNT" --quiet || return 1
+    key_created=0
+  fi
+}
+
 restore_policy() {
   if [ "$policy_changed" -eq 1 ]; then
     gcloud resource-manager org-policies delete iam.disableServiceAccountKeyCreation \
@@ -59,6 +93,9 @@ on_exit() {
   if ! restore_policy; then
     status=1
   fi
+  if [ "$key_cleanup_armed" -eq 1 ] && ! cleanup_new_key; then
+    status=1
+  fi
   exit "$status"
 }
 trap on_exit EXIT
@@ -70,11 +107,13 @@ policy_changed=1
   --project="$PROJECT_ID" --effective --format='value(booleanPolicy.enforced)')" = "False" ] \
   || die "project key-creation policy did not become disabled"
 
+key_created=1
 gcloud iam service-accounts keys create /dev/stdout --iam-account="$SERVICE_ACCOUNT" --format=json \
   | jq -e --arg expected "$EXPECTED_CLIENT_EMAIL" \
       'type == "object" and .type == "service_account" and .client_email == $expected' \
   | doppler secrets set "$SECRET_NAME" --project="$DOPPLER_PROJECT" \
       --config="$DOPPLER_CONFIG" --value-stdin >/dev/null
+find_new_key || die "could not identify the replacement key"
 
 restore_policy
 
@@ -84,7 +123,47 @@ doppler secrets get "$SECRET_NAME" --project="$DOPPLER_PROJECT" --config="$DOPPL
       "sudo bash -c 'set -Eeuo pipefail; tmp=\"$REMOTE_KEY.next\"; trap '\''rm -f \"\$tmp\"'\'' EXIT; umask 077; cat > \"\$tmp\"; jq -e --arg expected \"$EXPECTED_CLIENT_EMAIL\" '\''type == \"object\" and .type == \"service_account\" and .client_email == \$expected'\'' \"\$tmp\" >/dev/null; chown fleet-inventory:fleet-inventory \"\$tmp\"; chmod 0600 \"\$tmp\"; mv -f \"\$tmp\" \"$REMOTE_KEY\"; trap - EXIT'"
 
 ssh -i "$SSH_KEY" -o IdentitiesOnly=yes "$RUNNER" \
-  "sudo systemctl restart fleet-inventory.steampipe.service fleet-inventory.powerpipe.service && systemctl is-active fleet-inventory.steampipe.service fleet-inventory.powerpipe.service && curl -fsS http://127.0.0.1:9033/ >/dev/null && sudo ss -lntp | awk 'NR == 1 || /:9033|:9193/' && sudo /usr/local/sbin/gh-runner-preflight && sudo -u fleet-inventory env HOME=/var/lib/fleet-inventory STEAMPIPE_INSTALL_DIR=/var/lib/fleet-inventory/steampipe GOOGLE_APPLICATION_CREDENTIALS=$REMOTE_KEY bash -c 'while IFS= read -r query; do /usr/local/bin/steampipe query \"\$query\" --output csv; done < <(grep \"^select \" /var/lib/fleet-inventory/smoke-queries.sql)'"
+  "sudo bash -s -- '$REMOTE_KEY'" <<'REMOTE_VALIDATE'
+set -Eeuo pipefail
+remote_key=$1
 
+sudo systemctl restart fleet-inventory.steampipe.service fleet-inventory.powerpipe.service
+sudo systemctl is-active fleet-inventory.steampipe.service fleet-inventory.powerpipe.service
+curl -fsS http://127.0.0.1:9033/ >/dev/null
+sudo ss -H -lnt | awk '
+BEGIN {
+  expected["127.0.0.1:9033"] = 1
+  expected["127.0.0.1:9193"] = 1
+  expected["[::1]:9193"] = 1
+}
+{
+  local_address = $4
+  if (local_address in expected) {
+    seen[local_address]++
+  } else if (local_address ~ /:9033$/ || local_address ~ /:9193$/) {
+    invalid = 1
+  }
+}
+END {
+  if (invalid || seen["127.0.0.1:9033"] != 1 || seen["127.0.0.1:9193"] != 1 || seen["[::1]:9193"] != 1) {
+    exit 1
+  }
+}'
+sudo /usr/local/sbin/gh-runner-preflight
+mapfile -t queries < <(sudo grep -E '^[[:space:]]*select[[:space:]]' /var/lib/fleet-inventory/smoke-queries.sql)
+[ "${#queries[@]}" -eq 4 ]
+executed=0
+for query in "${queries[@]}"; do
+  sudo -u fleet-inventory env \
+      HOME=/var/lib/fleet-inventory \
+      STEAMPIPE_INSTALL_DIR=/var/lib/fleet-inventory/steampipe \
+      GOOGLE_APPLICATION_CREDENTIALS="$remote_key" \
+      /usr/local/bin/steampipe query "$query" --output csv
+  executed=$((executed + 1))
+done
+[ "$executed" -eq 4 ]
+REMOTE_VALIDATE
+
+key_cleanup_armed=0
 gcloud iam service-accounts keys delete "$old_key_id" --iam-account="$SERVICE_ACCOUNT" --quiet
 printf 'fleet-inventory key rotation: ok\n'
