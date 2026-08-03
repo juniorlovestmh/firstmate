@@ -64,6 +64,11 @@ Leave that session open and visit `http://127.0.0.1:9033`.
 The multi-project report is `http://127.0.0.1:9033/gcp_insights.dashboard.project_report`.
 Do not use Tailscale Serve, a public bind, a reverse proxy, or a firewall exception for this service.
 
+For dashboard proof, open the report once for each of the three configured project connections in `gcp.spc`.
+For each project, select its connection, wait for all panels to render, confirm the project identifier in the page, and capture a screenshot showing the dashboard and selected project.
+Save the three task-record screenshots as `.captain-evidence/fleet-powerpipe/gcp-insights-project-1.png`, `.captain-evidence/fleet-powerpipe/gcp-insights-project-2.png`, and `.captain-evidence/fleet-powerpipe/gcp-insights-project-3.png` at the worktree root.
+The screenshots are untracked evidence for the captain's archive and must not be committed.
+
 ## Validation
 
 Verify service state, HTTP health, and listener scope on the runner:
@@ -129,15 +134,14 @@ Never disable the organization-level policy.
 
 Rotate in this order:
 
-1. Record the current user-managed key ID without printing private material.
-2. Install an EXIT trap that deletes any temporary project policy.
-3. Create a project policy at `projects/1096421561730/policies/iam.disableServiceAccountKeyCreation` with `enforce: false`.
-4. Wait until the effective project policy reports `false`, then allow a short propagation interval.
-5. Create exactly one replacement key and pipe its private data directly into Doppler secret `FLEET_INVENTORY_GCP_READER_JSON`.
-6. Delete the project override and verify that the effective policy is `true` before continuing.
-7. Stream the Doppler value to `/var/lib/fleet-inventory/gcp-reader.json.next`, set owner `fleet-inventory:fleet-inventory` and mode `0600`, then atomically replace the active file.
-8. Restart both services and repeat the complete validation section.
-9. Delete the old GCP key only after validation passes.
+Run the repository-owned executable, which records the current key ID without printing private material, installs an EXIT trap, disables and restores only the host-project policy, creates exactly one replacement key, validates `type=service_account` and the expected `client_email` before vaulting, delivers the vaulted value through a pipe, validates it remotely before an atomic mode-0600 replacement, restarts both services, runs smoke and admission checks, and deletes the old key only after green validation:
+
+```sh
+bin/fm-fleet-inventory-rotate.sh
+```
+
+The script's policy restoration runs both on success and failure, and its post-restore check requires the effective project policy to report `True`.
+Do not reproduce the rotation sequence manually or place a key in a command argument, local file, log, or report.
 
 Use names-only Doppler output to confirm presence:
 
@@ -146,24 +150,7 @@ doppler secrets --project fleet-observability --config prd --only-names --json \
   | jq -e 'has("FLEET_INVENTORY_GCP_READER_JSON")'
 ```
 
-Stream the vaulted value without placing it in a command argument or local file:
-
-```sh
-doppler secrets get FLEET_INVENTORY_GCP_READER_JSON \
-  --project fleet-observability \
-  --config prd \
-  --plain \
-  --raw \
-  | ssh -i /Users/fox/Code/firstmate/data/gh-runner-t1/ci_access_key \
-      -o IdentitiesOnly=yes \
-      ubuntu@192.168.1.120 '
-        set -eu
-        sudo sh -c "umask 077; cat > /var/lib/fleet-inventory/gcp-reader.json.next"
-        sudo chown fleet-inventory:fleet-inventory /var/lib/fleet-inventory/gcp-reader.json.next
-        sudo chmod 0600 /var/lib/fleet-inventory/gcp-reader.json.next
-        sudo mv /var/lib/fleet-inventory/gcp-reader.json.next /var/lib/fleet-inventory/gcp-reader.json
-      '
-```
+The executable uses `set -Eeuo pipefail` for both credential pipelines, so a failed Doppler read, SSH delivery, or JSON validation cannot atomically replace the active credential.
 
 ## Teardown
 
