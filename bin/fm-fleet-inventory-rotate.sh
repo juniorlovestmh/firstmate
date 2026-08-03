@@ -15,6 +15,8 @@ readonly SECRET_NAME="FLEET_INVENTORY_GCP_READER_JSON"
 readonly RUNNER="${FLEET_INVENTORY_RUNNER:-ubuntu@192.168.1.120}"
 readonly SSH_KEY="${FLEET_INVENTORY_SSH_KEY:-/Users/fox/Code/firstmate/data/gh-runner-t1/ci_access_key}"
 readonly REMOTE_KEY="/var/lib/fleet-inventory/gcp-reader.json"
+readonly KEY_POLL_ATTEMPTS="${FLEET_INVENTORY_KEY_POLL_ATTEMPTS:-10}"
+readonly KEY_POLL_INTERVAL="${FLEET_INVENTORY_KEY_POLL_INTERVAL:-1}"
 
 usage() {
   cat <<'EOF'
@@ -48,18 +50,33 @@ key_cleanup_armed=1
 new_key_id=""
 
 find_new_key() {
+  local require_replacement=${1:-0}
   local current_keys current_key_count old_key_present candidate_count
   current_keys=$(gcloud iam service-accounts keys list \
     --iam-account="$SERVICE_ACCOUNT" --managed-by=user --format='value(name.basename())') || return 1
   current_key_count=$(printf '%s\n' "$current_keys" | awk 'NF { count++ } END { print count + 0 }')
   old_key_present=$(printf '%s\n' "$current_keys" | awk -v old="$old_key_id" '$0 == old { print "yes"; exit }')
   if [ "$current_key_count" -eq 1 ] && [ "$old_key_present" = "yes" ]; then
-    return 0
+    [ "$require_replacement" -eq 0 ]
+    return
   fi
   [ "$current_key_count" -eq 2 ] && [ "$old_key_present" = "yes" ] || return 1
   candidate_count=$(printf '%s\n' "$current_keys" | awk -v old="$old_key_id" '$0 != old && NF { count++ } END { print count + 0 }')
   [ "$candidate_count" -eq 1 ] || return 1
   new_key_id=$(printf '%s\n' "$current_keys" | awk -v old="$old_key_id" '$0 != old && NF { print; exit }')
+}
+
+wait_for_new_key() {
+  local attempt
+  for ((attempt = 1; attempt <= KEY_POLL_ATTEMPTS; attempt++)); do
+    if find_new_key 1; then
+      return 0
+    fi
+    if [ "$attempt" -lt "$KEY_POLL_ATTEMPTS" ]; then
+      sleep "$KEY_POLL_INTERVAL"
+    fi
+  done
+  return 1
 }
 
 cleanup_new_key() {
@@ -79,11 +96,16 @@ cleanup_new_key() {
 
 restore_policy() {
   if [ "$policy_changed" -eq 1 ]; then
-    gcloud resource-manager org-policies delete iam.disableServiceAccountKeyCreation \
-      --project="$PROJECT_ID"
-    [ "$(gcloud resource-manager org-policies describe iam.disableServiceAccountKeyCreation \
-      --project="$PROJECT_ID" --effective --format='value(booleanPolicy.enforced)')" = "True" ] \
-      || die "project key-creation policy was not restored"
+    if ! gcloud resource-manager org-policies delete iam.disableServiceAccountKeyCreation \
+      --project="$PROJECT_ID"; then
+      printf 'fm-fleet-inventory-rotate.sh: project key-creation policy removal failed\n' >&2
+      return 1
+    fi
+    if [ "$(gcloud resource-manager org-policies describe iam.disableServiceAccountKeyCreation \
+      --project="$PROJECT_ID" --effective --format='value(booleanPolicy.enforced)')" != "True" ]; then
+      printf 'fm-fleet-inventory-rotate.sh: project key-creation policy was not restored\n' >&2
+      return 1
+    fi
     policy_changed=0
   fi
 }
@@ -113,7 +135,7 @@ gcloud iam service-accounts keys create /dev/stdout --iam-account="$SERVICE_ACCO
       'type == "object" and .type == "service_account" and .client_email == $expected' \
   | doppler secrets set "$SECRET_NAME" --project="$DOPPLER_PROJECT" \
       --config="$DOPPLER_CONFIG" --value-stdin >/dev/null
-find_new_key || die "could not identify the replacement key"
+wait_for_new_key || die "replacement key did not appear as a distinct second key"
 
 restore_policy
 
