@@ -83,27 +83,43 @@ the `colima` binary's embedded strings and by directly testing it.
    **after** the internal copy was gone, to prove nothing silently depended
    on the old path.
 
-**Degraded/detached-drive behavior:** if CodeSSD is detached, `colima start`
-will fail cleanly (it can't find its VM disk) rather than corrupting
-anything — this is a clean failure, not a silent one, because `COLIMA_HOME`
-points at a path that simply won't exist. Any containers that were running
-(this machine's Neo4j/Postgres containers used by other projects) would stop
-being reachable until the drive is reattached and colima is restarted. This
-does **not** block firstmate's own boot or supervision — firstmate's own
-data/state/config always stay internal and have no dependency on Docker or
-Colima being available.
+**Degraded/detached-drive behavior:** for a manual `colima start`, if CodeSSD
+is detached, Colima will fail cleanly because it cannot find its VM disk,
+rather than corrupting anything. The auto-start path is different: the
+`homebrew.mxcl.colima` LaunchAgent invokes `colima start -f`, which remains
+subject to the pre-existing silent launchd hang documented above. A detached
+drive may therefore produce that same apparent hang during auto-start instead
+of a clean surfaced error; check whether CodeSSD is mounted when diagnosing
+it. Any containers that were running (this machine's Neo4j/Postgres
+containers used by other projects) would stop being reachable until the drive
+is reattached and Colima is restarted. This does **not** block firstmate's own
+boot or supervision — firstmate's own data/state/config always stay internal
+and have no dependency on Docker or Colima being available.
 
-**Rollback:** delete `/Volumes/CodeSSD/Caches/colima-home/`, remove the
-`COLIMA_HOME` lines from `~/.zshenv` and from
-`~/Library/LaunchAgents/homebrew.mxcl.colima.plist`'s `EnvironmentVariables`
-dict, then run `colima start` — it will create a fresh VM at the default
-internal `~/.colima` location (this is a full rebuild, not a restore of prior
-container state — the old containers/images were already regenerable by
-design, per the task's own framing). The pre-migration stock plist was not
-separately archived. To regenerate it, delete the plist and run
-`brew services start colima`; the formula recreates its stock template, and
-`COLIMA_HOME` must be re-added by hand if relocating again. The final patched
-plist captured after this migration was:
+**Rollback:** keep the relocated copy as the recovery path until the internal
+rebuild has succeeded. The documented rollback order is:
+
+1. Remove the `COLIMA_HOME` lines from `~/.zshenv` and from
+   `~/Library/LaunchAgents/homebrew.mxcl.colima.plist`'s
+   `EnvironmentVariables` dict (or delete the plist and let
+   `brew services start colima` regenerate the stock one).
+2. Run `colima start` to rebuild a fresh VM at the default internal
+   `~/.colima` location.
+3. Smoke-test the internal rebuild with
+   `docker run --rm busybox:latest echo OK`.
+4. Only after that smoke test succeeds, optionally delete
+   `/Volumes/CodeSSD/Caches/colima-home/` to reclaim CodeSSD space; keeping it
+   costs nothing and is not required to complete rollback.
+
+This is a full rebuild, not a restore of prior container state — the old
+containers/images were already regenerable by design, per the task's own
+framing. The sequence preserves a recovery path throughout; a documented
+rollback with a no-recovery window is exactly the kind of instruction that
+gets followed during a 2am incident and loses data. The pre-migration stock
+plist was not separately archived. To regenerate it, delete the plist and
+run `brew services start colima`; the formula recreates its stock template,
+and `COLIMA_HOME` must be re-added by hand if relocating again. The final
+patched plist captured after this migration was:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -294,7 +310,7 @@ under active multi-agent write access.
 
 | Item | Rollback |
 |---|---|
-| Colima | Remove `COLIMA_HOME` from `~/.zshenv` and the LaunchAgent plist (or delete the plist and let `brew services start colima` regenerate the stock one), then `colima start` to rebuild fresh internally. Relocated copy stays at `/Volumes/CodeSSD/Caches/colima-home/colima-live` untouched until deleted. |
+| Colima | Remove `COLIMA_HOME` from `~/.zshenv` and the LaunchAgent plist (or delete the plist and let `brew services start colima` regenerate the stock one), run `colima start`, and smoke-test with `docker run --rm busybox:latest echo OK`. Only after success may the relocated copy at `/Volumes/CodeSSD/Caches/colima-home/colima-live` be optionally deleted; keeping it preserves recovery. |
 | pnpm | `pnpm config set store-dir <old-path> --location=global` (or unset). |
 | Go | `go env -w GOMODCACHE=$(go env GOPATH)/pkg/mod && go env -u GOCACHE`. |
 
