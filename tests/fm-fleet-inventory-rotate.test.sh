@@ -24,7 +24,7 @@ case "$*" in
     printf '%s\n' "$count" >"$FM_KEY_LIST_COUNT"
     if [ "${FM_STALE_KEY_LIST:-0}" -eq 1 ] || [ "$count" -eq 1 ]; then printf 'old-key\n'; else printf 'old-key\nnew-key\n'; fi
     ;;
-  *"keys create"*) printf '%s\n' '{"type":"service_account","client_email":"fleet-inventory-reader@cs-host-e77ac18f45de4a3887284f.iam.gserviceaccount.com"}' ;;
+  *"keys create"*) printf '%s\n' '{"type":"service_account","private_key_id":"new-key","client_email":"fleet-inventory-reader@cs-host-e77ac18f45de4a3887284f.iam.gserviceaccount.com"}' ;;
   *"booleanPolicy.enforced"*) if [ -e "$FM_POLICY_MARKER" ]; then printf 'True\n'; else printf 'False\n'; fi ;;
   *"org-policies delete"*)
     [ "${FM_FAIL_POLICY_RESTORE:-0}" -eq 0 ] || exit 1
@@ -59,7 +59,7 @@ fi
 SH
 cat >"$FAKEBIN/jq" <<'SH'
 #!/usr/bin/env bash
-cat
+exec /usr/bin/jq "$@"
 SH
 chmod +x "$FAKEBIN"/{gcloud,doppler,ssh,jq}
 

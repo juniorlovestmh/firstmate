@@ -48,28 +48,34 @@ policy_changed=0
 key_created=0
 key_cleanup_armed=1
 new_key_id=""
+key_id_file=$(mktemp "${TMPDIR:-/tmp}/fm-fleet-inventory-key-id.XXXXXX")
 
-find_new_key() {
-  local require_replacement=${1:-0}
-  local current_keys current_key_count old_key_present candidate_count
+load_created_key_id() {
+  local key_id_line
+  [ -s "$key_id_file" ] || return 1
+  key_id_line=$(awk 'NR == 1 { print; exit }' "$key_id_file")
+  case "$key_id_line" in
+    KEYID=*) new_key_id=${key_id_line#KEYID=} ;;
+    *) return 1 ;;
+  esac
+  [ -n "$new_key_id" ]
+}
+
+replacement_is_addressable() {
+  local current_keys current_key_count old_key_present replacement_present
   current_keys=$(gcloud iam service-accounts keys list \
     --iam-account="$SERVICE_ACCOUNT" --managed-by=user --format='value(name.basename())') || return 1
   current_key_count=$(printf '%s\n' "$current_keys" | awk 'NF { count++ } END { print count + 0 }')
   old_key_present=$(printf '%s\n' "$current_keys" | awk -v old="$old_key_id" '$0 == old { print "yes"; exit }')
-  if [ "$current_key_count" -eq 1 ] && [ "$old_key_present" = "yes" ]; then
-    [ "$require_replacement" -eq 0 ]
-    return
-  fi
-  [ "$current_key_count" -eq 2 ] && [ "$old_key_present" = "yes" ] || return 1
-  candidate_count=$(printf '%s\n' "$current_keys" | awk -v old="$old_key_id" '$0 != old && NF { count++ } END { print count + 0 }')
-  [ "$candidate_count" -eq 1 ] || return 1
-  new_key_id=$(printf '%s\n' "$current_keys" | awk -v old="$old_key_id" '$0 != old && NF { print; exit }')
+  replacement_present=$(printf '%s\n' "$current_keys" | awk -v replacement="$new_key_id" '$0 == replacement { print "yes"; exit }')
+  [ "$current_key_count" -eq 2 ] && [ "$old_key_present" = "yes" ] \
+    && [ "$replacement_present" = "yes" ]
 }
 
-wait_for_new_key() {
+wait_for_replacement() {
   local attempt
   for ((attempt = 1; attempt <= KEY_POLL_ATTEMPTS; attempt++)); do
-    if find_new_key 1; then
+    if replacement_is_addressable; then
       return 0
     fi
     if [ "$attempt" -lt "$KEY_POLL_ATTEMPTS" ]; then
@@ -81,17 +87,17 @@ wait_for_new_key() {
 
 cleanup_new_key() {
   [ "$key_created" -eq 1 ] || return 0
-  if [ -z "$new_key_id" ]; then
-    find_new_key || {
-      printf 'fm-fleet-inventory-rotate.sh: cannot identify the replacement key for cleanup\n' >&2
-      return 1
-    }
-  fi
-  if [ -n "$new_key_id" ]; then
-    gcloud iam service-accounts keys delete "$new_key_id" \
-      --iam-account="$SERVICE_ACCOUNT" --quiet || return 1
-    key_created=0
-  fi
+  load_created_key_id || {
+    printf 'fm-fleet-inventory-rotate.sh: cannot load the replacement key ID for cleanup\n' >&2
+    return 1
+  }
+  wait_for_replacement || {
+    printf 'fm-fleet-inventory-rotate.sh: replacement key was not addressable for cleanup\n' >&2
+    return 1
+  }
+  gcloud iam service-accounts keys delete "$new_key_id" \
+    --iam-account="$SERVICE_ACCOUNT" --quiet || return 1
+  key_created=0
 }
 
 restore_policy() {
@@ -118,6 +124,7 @@ on_exit() {
   if [ "$key_cleanup_armed" -eq 1 ] && ! cleanup_new_key; then
     status=1
   fi
+  rm -f "$key_id_file"
   exit "$status"
 }
 trap on_exit EXIT
@@ -132,10 +139,12 @@ policy_changed=1
 key_created=1
 gcloud iam service-accounts keys create /dev/stdout --iam-account="$SERVICE_ACCOUNT" --format=json \
   | jq -e --arg expected "$EXPECTED_CLIENT_EMAIL" \
-      'type == "object" and .type == "service_account" and .client_email == $expected' \
+      'select(type == "object" and .type == "service_account" and .client_email == $expected and (.private_key_id | type == "string")) | (.private_key_id | "KEYID=" + .) as $id | (($id | stderr) as $ignored | .)' \
+      2>"$key_id_file" \
   | doppler secrets set "$SECRET_NAME" --project="$DOPPLER_PROJECT" \
       --config="$DOPPLER_CONFIG" --value-stdin >/dev/null
-wait_for_new_key || die "replacement key did not appear as a distinct second key"
+load_created_key_id || die "key creation did not return a replacement key ID"
+wait_for_replacement || die "replacement key did not become an addressable distinct second key"
 
 restore_policy
 
