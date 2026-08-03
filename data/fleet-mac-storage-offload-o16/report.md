@@ -103,11 +103,14 @@ rebuild has succeeded. The documented rollback order is:
    `~/Library/LaunchAgents/homebrew.mxcl.colima.plist`'s
    `EnvironmentVariables` dict (or delete the plist and let
    `brew services start colima` regenerate the stock one).
-2. Run `colima stop`, then verify no stray Colima processes survived by
-   running `ps aux | grep -iE "limactl|colima start"`. If any actual
-   `limactl hostagent`, `limactl usernet`, or `colima start` processes remain
-   (ignoring the grep process itself), terminate each with `kill -TERM <pid>`
-   before continuing.
+2. Run `colima stop`, then verify no stray default-profile processes survived
+   by running `ps aux | grep -F "_lima/colima/"`. This path-specific pattern
+   covers the migrated default profile under either `~/.colima` or the
+   CodeSSD copy, but does not match the separate `colima-amd64` profile or
+   unrelated Lima instances. Ignore the grep process itself; kill only PIDs
+   from matching default-profile rows with `kill -TERM <pid>`, never a bare
+   `limactl` or `colima` name match. Re-run the same scoped command and
+   proceed only after no matching process remains.
 3. Run `colima start` to rebuild a fresh VM at the default internal
    `~/.colima` location.
 4. Verify the Docker endpoint before testing: run `docker context inspect
@@ -326,7 +329,7 @@ under active multi-agent write access.
 
 | Item | Rollback |
 |---|---|
-| Colima | Remove `COLIMA_HOME` from `~/.zshenv` and the LaunchAgent plist (or delete the plist and let `brew services start colima` regenerate the stock one), run `colima stop`, clear any surviving Colima processes, run `colima start`, verify `docker context inspect colima` reports `unix:///Users/fox/.colima/default/docker.sock`, and smoke-test with `docker run --rm busybox:latest echo OK`. Only after success may the relocated copy at `/Volumes/CodeSSD/Caches/colima-home/colima-live` be optionally deleted; keeping it preserves recovery. |
+| Colima | Remove `COLIMA_HOME` from `~/.zshenv` and the LaunchAgent plist (or delete the plist and let `brew services start colima` regenerate the stock one), run `colima stop`, inspect `ps aux | grep -F "_lima/colima/"`, terminate only matching default-profile PIDs, and recheck until clear. Then run `colima start`, verify `docker context inspect colima` reports `unix:///Users/fox/.colima/default/docker.sock`, and smoke-test with `docker run --rm busybox:latest echo OK`. Only after success may the relocated copy at `/Volumes/CodeSSD/Caches/colima-home/colima-live` be optionally deleted; keeping it preserves recovery. |
 | pnpm | `pnpm config set store-dir <old-path> --location=global` (or unset). |
 | Go | `go env -w GOMODCACHE=$(go env GOPATH)/pkg/mod && go env -u GOCACHE`. |
 
