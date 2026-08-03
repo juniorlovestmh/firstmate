@@ -80,6 +80,8 @@ test_rotation_orders_restore_delivery_validation_and_deletion() {
   assert_contains "$out" "fleet-inventory key rotation: ok" "rotation did not report success"
   [ "$(wc -l <"$VAULT" | tr -d ' ')" -gt 0 ] || fail "vault did not receive credential stream"
   cmp -s "$VAULT" "$DELIVERED" || fail "delivered credential differs from vaulted credential"
+  jq -e '.type == "service_account" and .private_key_id == "new-key" and .client_email == "fleet-inventory-reader@cs-host-e77ac18f45de4a3887284f.iam.gserviceaccount.com"' "$VAULT" >/dev/null \
+    || fail "vault did not receive the complete validated credential object"
   [ -e "$TMP_ROOT/restored" ] || fail "policy restoration was not executed"
   [ "$(grep -c 'keys create' "$LOG")" -eq 1 ] || fail "rotation did not create exactly one replacement key"
   [ "$(grep -c 'keys delete' "$LOG")" -eq 1 ] || fail "old key was not deleted once"
