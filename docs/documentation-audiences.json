@@ -104,7 +104,7 @@
   ],
   "surfaces": [
     {
-      "path": "data/fleet-mac-storage-offload-o16/report.md",
+      "path": "docs/fleet-mac-storage-offload-o16.md",
       "audience": "maintainer-verification"
     },
     {
