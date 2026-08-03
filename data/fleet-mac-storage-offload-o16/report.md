@@ -72,9 +72,9 @@ the `colima` binary's embedded strings and by directly testing it.
      `/Volumes/CodeSSD/Caches/colima-home/homebrew.mxcl.colima.plist.orig-backup`
      is **not present** — see rollback note below; the plist was regenerated
      by `brew services start colima` rather than hand-copied, so the
-     "original" is whatever `brew`'s colima formula template produces, not a
-     literal file backup. The full patched plist content is captured in this
-     report's rollback section instead.
+  "original" is whatever `brew`'s colima formula template produces, not a
+  literal file backup. The final patched plist is captured in this report's
+  rollback section; the pre-migration stock plist is not separately archived.
 5. Smoke-tested: `docker run --rm busybox:latest` succeeded against the
    relocated VM (`COLIMA_RELOCATED_OK` / `COLIMA_RELOCATED_OK_FINAL`), and
    `docker context ls` correctly shows the CodeSSD socket path.
@@ -96,11 +96,59 @@ Colima being available.
 **Rollback:** delete `/Volumes/CodeSSD/Caches/colima-home/`, remove the
 `COLIMA_HOME` lines from `~/.zshenv` and from
 `~/Library/LaunchAgents/homebrew.mxcl.colima.plist`'s `EnvironmentVariables`
-dict (or just delete the plist and run `brew services start colima` to
-regenerate the stock one), then run `colima start` — it will create a fresh
-VM at the default internal `~/.colima` location (this is a full rebuild, not
-a restore of prior container state — the old containers/images were already
-regenerable by design, per the task's own framing).
+dict, then run `colima start` — it will create a fresh VM at the default
+internal `~/.colima` location (this is a full rebuild, not a restore of prior
+container state — the old containers/images were already regenerable by
+design, per the task's own framing). The pre-migration stock plist was not
+separately archived. To regenerate it, delete the plist and run
+`brew services start colima`; the formula recreates its stock template, and
+`COLIMA_HOME` must be re-added by hand if relocating again. The final patched
+plist captured after this migration was:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>COLIMA_HOME</key>
+		<string>/Volumes/CodeSSD/Caches/colima-home/colima-live</string>
+	</dict>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<true/>
+	</dict>
+	<key>Label</key>
+	<string>homebrew.mxcl.colima</string>
+	<key>LimitLoadToSessionType</key>
+	<array>
+		<string>Aqua</string>
+		<string>Background</string>
+		<string>LoginWindow</string>
+		<string>StandardIO</string>
+		<string>System</string>
+	</array>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/opt/colima/bin/colima</string>
+		<string>start</string>
+		<string>-f</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/opt/homebrew/var/log/colima.log</string>
+	<key>StandardOutPath</key>
+	<string>/opt/homebrew/var/log/colima.log</string>
+	<key>WorkingDirectory</key>
+	<string>/Users/fox</string>
+</dict>
+</plist>
+```
 
 ### Discovery: stale hung Colima process (pre-existing, unrelated to this migration)
 
@@ -143,10 +191,13 @@ Verified with `pnpm store path` (correctly resolves to the new location) and
 a real install smoke test (`pnpm add left-pad`, `pnpm add is-odd` in a scratch
 project) — packages landed in the new store, not the old one.
 
-**Degraded/detached-drive behavior:** if CodeSSD is detached, pnpm will
-simply re-populate a local store the next time it needs one (pnpm creates
-the store-dir path on demand) — worst case is a slower first install, not
-a failure. No data loss risk since the store is 100% re-downloadable.
+**Degraded/detached-drive behavior:** pnpm is drive-required while
+`store-dir` points at CodeSSD. If CodeSSD is detached, `pnpm add` and
+`pnpm install` fail with a clear `ENOENT`/`EACCES` error while trying to use
+the configured store path; pnpm does not fall back to a local store. Nothing
+is corrupted because the store is 100% re-downloadable. Recovery with the
+drive detached is `pnpm config set store-dir <local path> --location=global`;
+pnpm works again after it is pointed at an internal path.
 
 **Rollback:** `pnpm config set store-dir <original path> --location=global`,
 or delete the config to fall back to pnpm's default.
@@ -167,9 +218,16 @@ empty.
    internally).
 4. Smoke-tested with a real `go run` of a trivial program — succeeded, and
    the build cache populated at the new location.
-5. Removed the internal copy with `go clean -modcache` (not `rm -rf` — Go
+5. Removed only the internal copy with
+   `GOMODCACHE=/Users/fox/go/pkg/mod go clean -modcache` (not `rm -rf` — Go
    marks module cache contents read-only, and `go clean -modcache` is the
-   supported way to remove it correctly).
+   supported way to remove it correctly). The explicit environment override
+   targeted the internal source despite the persisted CodeSSD `GOMODCACHE`
+   setting; it did not clean the relocated copy.
+6. Fresh post-removal verification confirmed
+   `/Volumes/CodeSSD/Caches/go/mod-live` was still present and intact (1.5 GB,
+   with all module directories present), `go env GOMODCACHE GOCACHE` still
+   resolved to CodeSSD, and a new trivial `go run` smoke test succeeded.
 
 **Degraded/detached-drive behavior:** if CodeSSD is detached, `go build`/`go
 run`/`go get` will fail with a clear "no such file or directory" pointing at
@@ -248,6 +306,8 @@ under active multi-agent write access.
 - pnpm: `pnpm store path` resolved to the new location; a real `pnpm add`
   populated it, not the old path.
 - Go: `rsync -rcln --delete` checksum dry-run showed zero content diffs;
-  `go run` of a trivial program succeeded and populated the new build cache.
+  `GOMODCACHE=/Users/fox/go/pkg/mod go clean -modcache` removed only the
+  internal source; the CodeSSD module cache remained intact, `go env` still
+  pointed both caches at CodeSSD, and a fresh trivial `go run` succeeded.
 - Disk free space measured with `df -h` before and after each step (see
   table above).
