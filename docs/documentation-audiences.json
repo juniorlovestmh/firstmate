@@ -104,6 +104,10 @@
   ],
   "surfaces": [
     {
+      "path": "data/fleet-mac-storage-offload-o16/report.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": ".agents/skills/afk/SKILL.md",
       "audience": "agent-runtime"
     },
