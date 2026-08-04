@@ -191,15 +191,18 @@ analyze_status() {  # <status-file> <task-id>
             respawns=$((respawns + 1))
           fi
           ;;
-        needs-decision|blocked)
-          [ "$verb" = needs-decision ] && needs_decision=$((needs_decision + 1))
-          [ "$verb" = blocked ] && blocked=$((blocked + 1))
+        needs-decision)
+          needs_decision=$((needs_decision + 1))
           key=$(_fm_decision_key "$line") || key=''
           if [ -n "$key" ]; then
             open_decisions=$(_fm_decision_drop "$open_decisions" "$key")
             [ -n "$open_decisions" ] && open_decisions="${open_decisions}"$'\n'
             open_decisions="${open_decisions}${key}"$'\t'"${verb}"$'\t'"$(status_line_note "$line")"$'\n'
           fi
+          failed_terminal=0
+          ;;
+        blocked)
+          blocked=$((blocked + 1))
           failed_terminal=0
           ;;
         resolved)
