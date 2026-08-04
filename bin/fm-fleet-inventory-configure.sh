@@ -53,19 +53,50 @@ while [ "$#" -gt 0 ]; do
 done
 
 validate_config() {
-  local disabled_ignore_count project_count unique_count
-  local projects
+  local aggregator_connections aggregator_count disabled_ignore_count project_count unique_count
+  local project_connections projects
 
   [ -r "$config" ] || die "config is not readable: $config"
   grep -Fq 'connection "gcp_all"' "$config" || die "config has no gcp_all aggregator"
-  projects=$(awk '$1 == "project" && $2 == "=" { value = $3; gsub(/"/, "", value); print value }' "$config")
+  project_connections=$(awk '
+    /^connection "[^"]+"/ {
+      name = $2
+      gsub(/"/, "", name)
+      in_connection = 1
+      next
+    }
+    /^}/ { in_connection = 0 }
+    in_connection && $1 == "project" && $2 == "=" {
+      project = $3
+      gsub(/"/, "", project)
+      print name "\t" project
+    }
+  ' "$config")
+  projects=$(printf '%s\n' "$project_connections" | awk -F '\t' 'NF == 2 { print $2 }')
+  aggregator_connections=$(awk '
+    /^connection "gcp_all"/ { in_aggregator = 1; next }
+    in_aggregator && /^}/ { in_aggregator = 0 }
+    in_aggregator && $1 ~ /^"[^"]+"[,]?$/ {
+      connection = $1
+      gsub(/[",]/, "", connection)
+      print connection
+    }
+  ' "$config")
   project_count=$(printf '%s\n' "$projects" | awk 'NF { count++ } END { print count + 0 }')
   unique_count=$(printf '%s\n' "$projects" | awk 'NF' | sort -u | awk 'END { print NR + 0 }')
+  aggregator_count=$(printf '%s\n' "$aggregator_connections" | awk 'NF { count++ } END { print count + 0 }')
   disabled_ignore_count=$(grep -Fc '".*SERVICE_DISABLED.*"' "$config")
   [ "$project_count" -gt 0 ] || die "config has no project connections"
   [ "$project_count" -eq "$unique_count" ] || die "config contains duplicate project IDs"
+  [ "$project_count" -eq "$aggregator_count" ] \
+    || die "gcp_all aggregator must include every project connection"
   [ "$project_count" -eq "$disabled_ignore_count" ] \
     || die "every project connection must ignore disabled service APIs"
+  while IFS=$'\t' read -r connection project; do
+    [ -n "$connection" ] || continue
+    grep -Fxq "$connection" <<<"$aggregator_connections" \
+      || die "gcp_all aggregator is missing connection: $connection ($project)"
+  done <<<"$project_connections"
   while IFS= read -r project; do
     [ -n "$project" ] || continue
     printf 'fleet-inventory config project: %s\n' "$project"
@@ -126,6 +157,16 @@ wait_for_steampipe() {
   return 1
 }
 
+assert_loopback_listeners() {
+  local actual expected
+  expected=$'127.0.0.1:9033\n127.0.0.1:9193\n[::1]:9193'
+  actual=$(ss -ltnH | awk '$4 ~ /:9033$/ || $4 ~ /:9193$/ { print $4 }' | sort -u)
+  [ "$actual" = "$expected" ] || {
+    printf 'unexpected fleet-inventory listeners:\n%s\n' "$actual" >&2
+    return 1
+  }
+}
+
 wait_for_dashboard() {
   local attempt code url=$1
   for attempt in $(seq 1 60); do
@@ -141,6 +182,7 @@ restart_inventory_services() {
   systemctl restart fleet-inventory.steampipe.service
   wait_for_steampipe
   systemctl start fleet-inventory.powerpipe.service
+  assert_loopback_listeners
   wait_for_dashboard http://127.0.0.1:9033/
 }
 

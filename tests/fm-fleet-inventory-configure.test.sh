@@ -54,6 +54,18 @@ test_check_lists_the_complete_inventory() {
   pass "configure validates all confirmed active fleet projects"
 }
 
+test_check_rejects_incomplete_aggregator() {
+  local config out
+  config="$TMP_ROOT/incomplete.spc"
+  sed '/^    "gcp_tab_stg"$/d' "$ROOT/docs/examples/fleet-inventory-gcp.spc" >"$config"
+  if out=$("$CONFIGURE" --check --config "$config" 2>&1); then
+    fail "incomplete gcp_all aggregator was accepted"
+  fi
+  assert_contains "$out" "gcp_all aggregator must include every project connection" \
+    "incomplete aggregator diagnostic is missing"
+  pass "configure rejects incomplete aggregators"
+}
+
 test_deploy_streams_config_and_limits_the_restart() {
   local remote_program
   : >"$LOG"
@@ -68,6 +80,9 @@ test_deploy_streams_config_and_limits_the_restart() {
   assert_contains "$remote_program" "systemctl stop fleet-inventory.powerpipe.service" "Powerpipe dependency stop is missing"
   assert_contains "$remote_program" "systemctl restart fleet-inventory.steampipe.service" "Steampipe restart is missing"
   assert_contains "$remote_program" "wait_for_steampipe" "Steampipe stability check is missing"
+  assert_contains "$remote_program" "assert_loopback_listeners" "exact listener validation is missing"
+  assert_contains "$remote_program" "127.0.0.1:9033" "Powerpipe loopback listener is not enforced"
+  assert_contains "$remote_program" "[::1]:9193" "IPv6 Steampipe loopback listener is not enforced"
   assert_contains "$remote_program" "systemctl start fleet-inventory.powerpipe.service" "Powerpipe reattachment start is missing"
   assert_contains "$remote_program" "gcp_insights.dashboard.project_report" "dashboard verification is missing"
   if printf '%s\n' "$remote_program" | grep -Fq '/usr/local/bin/steampipe query'; then fail "deployment launched a competing Steampipe query process"; fi
@@ -78,4 +93,5 @@ test_deploy_streams_config_and_limits_the_restart() {
 
 test_help_is_public
 test_check_lists_the_complete_inventory
+test_check_rejects_incomplete_aggregator
 test_deploy_streams_config_and_limits_the_restart
