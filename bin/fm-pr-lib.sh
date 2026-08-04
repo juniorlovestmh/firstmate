@@ -109,6 +109,19 @@ fm_task_id_creation_valid() {
   [ "${#id}" -le 64 ]
 }
 
+# Validate a branch name before it can enter task metadata or authorize a PR
+# base comparison. Git's branch validator owns the ref grammar; the explicit
+# length and @{ checks keep metadata bounded and prevent checkout shorthand
+# from being resolved relative to this repository.
+fm_pr_base_ref_valid() {
+  local ref=${1-}
+  [ -n "$ref" ] && [ "${#ref}" -le 1024 ] || return 1
+  case "$ref" in
+    *'@{'*) return 1 ;;
+  esac
+  git check-ref-format --branch "$ref" >/dev/null 2>&1
+}
+
 # GitLab serves self-hosted instances, so the host is part of the identity
 # rather than a constant. It is accepted only as a lowercase DNS name with no
 # userinfo, port, or trailing dot, which keeps one canonical spelling per MR.
