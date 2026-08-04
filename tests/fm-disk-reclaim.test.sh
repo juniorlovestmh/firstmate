@@ -6,17 +6,46 @@
 #
 # treehouse and docker are faked via PATH shims so the suite never depends on
 # or mutates this host's real fleet or container state. git, jq, du, find,
-# and awk are the real system tools.
+# and awk are the real system tools, reached through a HERMETIC PATH built
+# from symlinks to each tool's resolved absolute path (hermetic_toolpath
+# below) rather than broad system directories like /usr/bin. A broad
+# directory is not safe here: GitHub's ubuntu-latest CI runners ship a real,
+# already-running Docker in /usr/bin, so a case asserting docker's ABSENCE
+# (no fake stub provided) would silently start exercising the real docker
+# there instead of the "not installed" skip path - which is exactly what
+# broke tests/fm-disk-reclaim.test.sh's "docker not installed" case in CI
+# while passing locally on a Mac where Homebrew's docker lives outside
+# /usr/bin. A hermetic PATH makes every tool's presence or absence an
+# explicit, deliberate decision by this file, never an accident of PATH order
+# on whatever host or CI runner the suite happens to run on.
 set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 RECLAIM="$ROOT/bin/fm-disk-reclaim.sh"
-BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
-JQ_DIR=$(command -v jq 2>/dev/null) && JQ_DIR=$(dirname "$JQ_DIR") || JQ_DIR=
-[ -n "$JQ_DIR" ] && BASE_PATH="$JQ_DIR:$BASE_PATH"
 TMP_ROOT=$(fm_test_tmproot fm-disk-reclaim)
+
+# hermetic_toolpath <dir>: a fresh directory containing symlinks to the
+# resolved absolute path of each real tool this suite legitimately needs
+# (git, jq, and the coreutils bin/fm-disk-reclaim.sh and bin/fm-disk-lib.sh
+# invoke, plus bash itself for the `#!/usr/bin/env bash` shebang on direct
+# invocation). Any tool not present on this host is silently skipped rather
+# than failing the setup - the suite's own assertions catch a genuinely
+# missing dependency. Nothing outside this allowlist - crucially docker and
+# treehouse - is ever reachable unless a case's own fakebin provides it.
+hermetic_toolpath() {
+  local dir=$1 tool resolved tools
+  mkdir -p "$dir"
+  tools="bash git jq awk du find wc tr head cat mkdir rm df sed cut sort basename dirname mktemp chmod"
+  for tool in $tools; do
+    resolved=$(command -v "$tool" 2>/dev/null) || continue
+    ln -sf "$resolved" "$dir/$tool"
+  done
+  printf '%s\n' "$dir"
+}
+
+BASE_PATH=$(hermetic_toolpath "$TMP_ROOT/hermetic-tools")
 
 # make_pushed_clean_repo <dir>: an idle, clean, fully-pushed fixture worktree.
 make_pushed_clean_repo() {
