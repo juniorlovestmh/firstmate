@@ -28,8 +28,8 @@ make_pushed_clean_repo() {
   # Push to a deterministic destination, then set the upstream explicitly.
   # GitHub's Linux Git rejects `push -u HEAD:main` when the local branch has
   # a different name (for example master).
-  git -C "$dir" push -q origin HEAD:main
-  git -C "$dir" branch --set-upstream-to=origin/main >/dev/null
+  git -C "$dir" push -q origin HEAD:refs/heads/main
+  git -C "$dir" branch --set-upstream-to=origin/main "$(git -C "$dir" branch --show-current)" >/dev/null
 }
 
 # fake_treehouse <fakebin> <json>: a treehouse stub whose `status --json`
@@ -64,7 +64,7 @@ build_pool_fixture() {
   printf 'node_modules/\n' > "$pool/1/proj/.gitignore"
   git -C "$pool/1/proj" add .gitignore
   git -C "$pool/1/proj" commit -q -m "add gitignore"
-  git -C "$pool/1/proj" push -q
+  git -C "$pool/1/proj" push -q origin HEAD:refs/heads/main
 
   make_pushed_clean_repo "$pool/2/proj"
   echo draft > "$pool/2/proj/unpublished-draft.md"
