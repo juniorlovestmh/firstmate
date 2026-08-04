@@ -70,6 +70,17 @@ test_help_is_public() {
   pass "rotation exposes a public help entrypoint"
 }
 
+test_rotation_uses_service_backed_smoke_checks() {
+  local source
+  source=$(cat "$ROTATE")
+  if printf '%s\n' "$source" | grep -Fq '/usr/local/bin/steampipe query'; then
+    fail "rotation launches a competing Steampipe query process"
+  fi
+  assert_contains "$source" "gcp_insights.dashboard.project_report" \
+    "rotation does not verify the running multi-project dashboard"
+  pass "rotation verifies the running Powerpipe services"
+}
+
 test_rotation_orders_restore_delivery_validation_and_deletion() {
   local out
   : >"$LOG"
@@ -139,6 +150,7 @@ test_restore_and_cleanup_failures_are_both_attempted() {
 }
 
 test_help_is_public
+test_rotation_uses_service_backed_smoke_checks
 test_rotation_orders_restore_delivery_validation_and_deletion
 test_failed_vaulting_cleans_only_replacement_key
 test_failed_remote_validation_cleans_only_replacement_key

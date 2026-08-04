@@ -10,7 +10,8 @@ The AGPL tooling is approved for internal operations only and must not be embedd
 - Powerpipe `v1.5.2` listens on `127.0.0.1:9033` through `fleet-inventory.powerpipe.service`.
 - Steampipe `v2.4.4` listens on `127.0.0.1:9193` and `[::1]:9193` through `fleet-inventory.steampipe.service`.
 - The GCP plugin is installed in `/var/lib/fleet-inventory/steampipe` and the `gcp_insights` mod is installed in `/var/lib/fleet-inventory/powerpipe-workspace`.
-- `/var/lib/fleet-inventory/steampipe/config/gcp.spc` defines the three project connections and the `gcp_all` aggregator.
+- [`examples/fleet-inventory-gcp.spc`](examples/fleet-inventory-gcp.spc) defines every confirmed active fleet project connection and the `gcp_all` aggregator.
+- `/var/lib/fleet-inventory/steampipe/config/gcp.spc` is the deployed copy of that tracked configuration.
 - `/var/lib/fleet-inventory/gcp-reader.json` is mode `0600`, owned by `fleet-inventory:fleet-inventory`, and never belongs in Git.
 - Doppler project `fleet-observability`, config `prd`, owns the credential as `FLEET_INVENTORY_GCP_READER_JSON`.
 - `fleet-inventory-reader@cs-host-e77ac18f45de4a3887284f.iam.gserviceaccount.com` has organization-level `roles/viewer` and no mutation role.
@@ -21,10 +22,24 @@ The Powerpipe unit must include `--listen local`.
 
 ## Install or reconcile
 
-The runner keeps the reviewed adoption package at `/var/lib/fleet-inventory/adoption-package`.
-The stored Steampipe unit includes the required explicit loopback flag.
+The original installation was hand-provisioned from a private adoption package and had no tracked connection-config owner.
+The repository now owns connection reconciliation through [`fm-fleet-inventory-configure.sh`](../bin/fm-fleet-inventory-configure.sh) and [`examples/fleet-inventory-gcp.spc`](examples/fleet-inventory-gcp.spc).
+The runner keeps the reviewed adoption package at `/var/lib/fleet-inventory/adoption-package` for initial service installation, and its stored Steampipe unit includes the required explicit loopback flag.
 
-Before running the installer, confirm the credential file exists without reading it:
+Validate the tracked inventory without contacting the runner:
+
+```sh
+bin/fm-fleet-inventory-configure.sh --check
+```
+
+Deploy the tracked configuration atomically, restart Steampipe and Powerpipe in dependency order, and verify the loopback Powerpipe root and multi-project dashboard endpoints:
+
+```sh
+bin/fm-fleet-inventory-configure.sh
+```
+
+For an already installed runner, the command above is the only connection-config deployment or reconcile path.
+For initial service installation only, confirm the credential file exists without reading it:
 
 ```sh
 ssh -i /Users/fox/Code/firstmate/data/gh-runner-t1/ci_access_key \
@@ -64,10 +79,10 @@ Leave that session open and visit `http://127.0.0.1:9033`.
 The multi-project report is `http://127.0.0.1:9033/gcp_insights.dashboard.project_report`.
 Do not use Tailscale Serve, a public bind, a reverse proxy, or a firewall exception for this service.
 
-For dashboard proof, open the report once for each of the three configured project connections in `gcp.spc`.
+For dashboard proof, open the report for the configured project connection under review.
 For each project, select its connection, wait for all panels to render, confirm the project identifier in the page, and capture a screenshot showing the dashboard and selected project.
-Save the three task-record screenshots as `.captain-evidence/fleet-powerpipe/gcp-insights-project-1.png`, `.captain-evidence/fleet-powerpipe/gcp-insights-project-2.png`, and `.captain-evidence/fleet-powerpipe/gcp-insights-project-3.png` at the worktree root.
-The screenshots are untracked evidence for the captain's archive and must not be committed.
+Save task-record screenshots under `.captain-evidence/fleet-powerpipe/<connection>.png` at the worktree root.
+Screenshots are untracked evidence for the captain's archive and must not be committed.
 
 ## Validation
 
@@ -81,6 +96,7 @@ ssh -i /Users/fox/Code/firstmate/data/gh-runner-t1/ci_access_key \
     systemctl is-enabled fleet-inventory.steampipe.service fleet-inventory.powerpipe.service
     systemctl is-active fleet-inventory.steampipe.service fleet-inventory.powerpipe.service
     curl -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9033/
+    curl -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9033/gcp_insights.dashboard.project_report
     sudo ss -lntp | awk "NR == 1 || /:9033|:9193/"
     sudo /usr/local/sbin/gh-runner-preflight
   '
@@ -89,30 +105,16 @@ ssh -i /Users/fox/Code/firstmate/data/gh-runner-t1/ci_access_key \
 The only accepted inventory listeners are `127.0.0.1:9033`, `127.0.0.1:9193`, and `[::1]:9193`.
 The runner admission command must return `PREFLIGHT_OK=true` without changing its policy or the `ghrunner` groups.
 
-The package smoke file contains four independent SQL statements, so run each statement separately through the service identity:
+Do not run `steampipe query` as a second process while `fleet-inventory.steampipe.service` is running.
+During a restart its plugin processes report transient reattachment errors, and a competing process may attempt to bind the service port.
+Use the running dashboard endpoints and systemd service state for standing-service verification.
+The repository reconcile command refuses to restart when it detects a Steampipe plugin manager outside the inventory service cgroup.
+If that guard fires, stop the competing Steampipe command and rerun the reconcile; do not kill the service-owned plugin manager.
+
+Exercise the service restart path through the repository reconcile, then repeat the service, dashboard, listener, and admission checks:
 
 ```sh
-ssh -i /Users/fox/Code/firstmate/data/gh-runner-t1/ci_access_key \
-  -o IdentitiesOnly=yes \
-  ubuntu@192.168.1.120 '
-    set -eu
-    while IFS= read -r query; do
-      sudo -u fleet-inventory env \
-        HOME=/var/lib/fleet-inventory \
-        STEAMPIPE_INSTALL_DIR=/var/lib/fleet-inventory/steampipe \
-        GOOGLE_APPLICATION_CREDENTIALS=/var/lib/fleet-inventory/gcp-reader.json \
-        /usr/local/bin/steampipe query "$query" --output csv
-    done < <(sudo grep "^select " /var/lib/fleet-inventory/smoke-queries.sql)
-  '
-```
-
-Simulate reboot survival with a systemd restart, then repeat the health, listener, SQL, and admission checks:
-
-```sh
-ssh -i /Users/fox/Code/firstmate/data/gh-runner-t1/ci_access_key \
-  -o IdentitiesOnly=yes \
-  ubuntu@192.168.1.120 \
-  'sudo systemctl restart fleet-inventory.steampipe.service fleet-inventory.powerpipe.service'
+bin/fm-fleet-inventory-configure.sh
 ```
 
 From another machine on the LAN, both direct probes must fail:
