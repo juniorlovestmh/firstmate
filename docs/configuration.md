@@ -333,7 +333,7 @@ Better Stack polling from heartbeat handling was an interim practice and is reti
 
 ## Disk floor and reclaim (config/disk-floor)
 
-The Mac-mini disk guard (`fleet-local-disk-guard-o14`) protects against a repeat of the 2026-08-03 incident, when the internal data volume hit 100% free space twice and produced silent write failures that corrupted work rather than a loud, obvious error.
+The Mac-mini disk guard protects against the internal data volume reaching 100% utilization and producing silent write failures instead of a loud, obvious error.
 `bin/fm-disk-lib.sh` is the single owner of the check mechanics: it reads whole-GiB free space on the macOS data volume (`/System/Volumes/Data`) with portable `df -Pk`, resolves the configured floor, and shares one refusal message - current free space, the floor, and the reclaim command - across every caller.
 The default floor is 10GiB; set the local, gitignored `config/disk-floor` to a plain positive integer to override it.
 An absent, malformed, zero, or symlinked override is never trusted and silently keeps the default rather than guessing at unsafe input.
@@ -350,8 +350,8 @@ Three surfaces consume the shared check:
 It frees regenerable artifacts - `node_modules` and Rust `target/` directories (only when a sibling `Cargo.toml` confirms they are a real Rust build dir) - from IDLE treehouse pool slots, plus an age-filtered `docker image prune` and `docker builder prune` when Docker is running.
 It is dry-run by default and prints a manifest either way; pass `--apply` to actually remove and prune.
 A pool slot is reclaimed only when treehouse itself reports it `available` (no live process, no lease) **and** `git status --porcelain` is fully clean (no uncommitted or untracked content) **and** the branch has zero commits ahead of a configured upstream - `bin/fm-disk-lib.sh`'s `fm_disk_slot_verdict` is the single owner of that predicate.
-Any other state - in-use, dirty, untracked content, no upstream, unpushed commits - is skipped and reported, never removed; this is the precedent set by an earlier manual sweep that found an unpublished captain article in an idle pool slot.
-Docker reclaim never touches volumes or containers, only dangling images and build cache, both filtered by `--docker-age` (default `24h`) - see `data/learnings.md`'s Neo4j volume protection note for why that boundary matters on a shared host.
+Any other state - in-use, dirty, untracked content, no upstream, unpushed commits - is skipped and reported, never removed.
+Docker reclaim never touches volumes or containers, only dangling images and build cache, both filtered by `--docker-age` (default `24h`) - this preserves live service data on a shared host; see the [storage offload report](fleet-mac-storage-offload-o16.md) for the related host-storage safety context.
 
 ## X mode (.env)
 
