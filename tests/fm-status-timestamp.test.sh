@@ -107,7 +107,7 @@ test_crew_state_map_path_accepts_timestamped_status() {
     '2026-07-19T12:00:00Z done: PR https://x/pull/3 checks green'
   do
     done_verb=$(status_line_verb "$line")
-    [ "$done_verb" = done ] || fail "done verb for '$line' -> '$done_verb'"
+    [ "$done_verb" = "done" ] || fail "done verb for '$line' -> '$done_verb'"
   done
   # crew-state also greps the script for the classify source (wiring guard)
   assert_grep 'fm-classify-lib.sh' "$ROOT/bin/fm-crew-state.sh" \
