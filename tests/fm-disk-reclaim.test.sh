@@ -35,12 +35,27 @@ TMP_ROOT=$(fm_test_tmproot fm-disk-reclaim)
 # missing dependency. Nothing outside this allowlist - crucially docker and
 # treehouse - is ever reachable unless a case's own fakebin provides it.
 hermetic_toolpath() {
-  local dir=$1 tool resolved tools
+  local dir=$1 tool resolved canonical absolute_dir tools
   mkdir -p "$dir"
-  tools="bash git jq awk du find wc tr head cat mkdir rm df sed cut sort basename dirname mktemp chmod"
+  tools="bash git jq awk du find wc tr head tail cat mkdir rm df sed cut sort basename dirname mktemp chmod"
   for tool in $tools; do
     resolved=$(command -v "$tool" 2>/dev/null) || continue
-    ln -sf "$resolved" "$dir/$tool"
+    if command -v realpath >/dev/null 2>&1; then
+      canonical=$(realpath "$resolved" 2>/dev/null) || {
+        fail "could not resolve an absolute path for test tool: $tool ($resolved)"
+        continue
+      }
+    else
+      absolute_dir=$(cd -P "$(dirname "$resolved")" 2>/dev/null && pwd -P) || {
+        fail "could not resolve an absolute path for test tool: $tool ($resolved)"
+        continue
+      }
+      canonical="$absolute_dir/$(basename "$resolved")"
+    fi
+    case "$canonical" in
+      /*) ln -sf "$canonical" "$dir/$tool" ;;
+      *) fail "resolved test tool path is not absolute: $tool ($canonical)" ;;
+    esac
   done
   printf '%s\n' "$dir"
 }
@@ -266,8 +281,8 @@ SH
 
   out=$(PATH="$fakebin:$BASE_PATH" "$RECLAIM" --apply --docker-age 12h --treehouse-root "$case_dir/pool" 2>&1)
   case "$out" in
-    *"image prune (until=12h)"*) ;;
-    *) fail "--docker-age should thread through to the image prune filter, got: $out" ;;
+    *"image prune (until=12h): Total reclaimed space: 0B"*"build cache prune (until=12h): Total reclaimed space: 0B"*) ;;
+    *) fail "--docker-age should thread through to both prune filters and report their summaries, got: $out" ;;
   esac
   if grep -qE '^(volume|container)' "$log"; then
     fail "fm-disk-reclaim.sh invoked docker volume/container - volumes and containers must never be touched"
