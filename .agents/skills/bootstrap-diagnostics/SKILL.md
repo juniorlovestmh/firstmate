@@ -2,7 +2,7 @@
 name: bootstrap-diagnostics
 description: >-
   Agent-only handling playbook for session-start bootstrap diagnostics.
-  Use whenever the session-start digest's bootstrap section prints an actionable diagnostic line - MISSING, MISSING_MANUAL, BACKEND_INVALID, NEEDS_GH_AUTH, TANGLE, STARTUP_MEMORY_BUDGET, CREW_DISPATCH invalid, FLEET_SYNC, PR_CHECK_MIGRATION, SECONDMATE_SYNC, SECONDMATE_LIVENESS, NUDGE_SECONDMATES, or FMX - or when a standalone bin/fm-bootstrap.sh run prints one of those lines.
+  Use whenever the session-start digest's bootstrap section prints an actionable diagnostic line - MISSING, MISSING_MANUAL, BACKEND_INVALID, NEEDS_GH_AUTH, TANGLE, STARTUP_MEMORY_BUDGET, CREW_DISPATCH invalid, FLEET_SYNC, PR_CHECK_MIGRATION, SECONDMATE_SYNC, SECONDMATE_LIVENESS, NUDGE_SECONDMATES, FMX, or DISK_FLOOR - or when a standalone bin/fm-bootstrap.sh run prints one of those lines.
   A silent bootstrap section, or a BOOTSTRAP_INFO fact, means no skill load.
 user-invocable: false
 metadata:
@@ -35,6 +35,8 @@ When any diagnostic needs captain attention, report the plain consequence and re
 - `BETTER_STACK: incident monitoring on ...` - the home-scoped poll is registered at the default check cadence; no action is needed.
 - `BETTER_STACK: incident monitoring off - removed ...` - the local presence flag was removed and bootstrap retired the runnable check while retaining incident dedupe state; no action is needed.
 - Any other `BETTER_STACK:` line - follow its concrete dependency, unsafe flag, activation, or cleanup diagnostic before relying on incident monitoring.
+- `DISK_FLOOR: <free>GiB free on <volume> is below the <floor>GiB floor - reclaim with: bin/fm-disk-reclaim.sh --apply` - the data volume is genuinely low; report the concrete free space and floor to the captain and offer to run the printed reclaim command (dry-run first, then `--apply` on captain confirmation - see `docs/configuration.md` "Disk floor and reclaim"). This line is detection only and never blocked bootstrap itself; a live spawn attempt on the same home will separately refuse until space is reclaimed or `config/disk-floor` is raised.
+- `DISK_FLOOR: failed to arm the registered disk guard watcher check` - the always-on disk-guard registration itself could not be materialized (a state-directory or check-registration failure); investigate `state/disk-guard.check.sh` and `state/disk-guard.check-trust` the same way a Better Stack arm failure would be investigated, then rerun session start to retry.
 - `FLEET_SYNC: <repo>: STUCK: on <state>, N commits behind <base> - needs attention` - the clone is dirty, on a non-default branch, detached with unique commits, or diverged, so the sync left it untouched (never forcing or discarding); it will keep falling behind until you look.
   A loud STUCK, especially a growing N across bootstraps, means that clone needs hands-on attention; dispatch a crewmate or resolve it before it strands work.
 - `PR_CHECK_MIGRATION: canonical polls rebuilt and armed; resume supervision for this home` - the non-executing migration rebuilt canonical task polls from validated metadata, and those polls are already armed.

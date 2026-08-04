@@ -87,6 +87,9 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-peek.sh`             | Print a bounded tail of a crewmate endpoint                                          |
 | `fm-check-register.sh`   | Bind an intentional custom watcher check to its current bytes                       |
 | `fm-check-lib.sh`        | Validate custom-check registrations and prepare private execution snapshots          |
+| `fm-disk-lib.sh`         | Shared data-volume free-space floor and pool-slot do-not-touch-dirty-slot predicate  |
+| `fm-disk-guard-poll.sh`  | Registered watcher check body for the Mac-mini disk floor guard                     |
+| `fm-disk-reclaim.sh`     | Dry-run-by-default reclaim of node_modules/Rust target in idle treehouse slots plus age-filtered Docker prune |
 | `fm-pr-lib.sh`           | Own canonical task and PR validation plus private atomic PR-poll publication and identity-bound retirement |
 | `fm-pr-poll.sh`          | Provide the byte-static watcher program for validated PR/MR-poll sidecars           |
 | `fm-pr-check-migrate.sh` | Quarantine older task polls without execution and rebuild only canonical polls       |

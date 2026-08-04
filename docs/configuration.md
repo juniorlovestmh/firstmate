@@ -331,6 +331,28 @@ Remove `config/better-stack-incidents` and rerun locked session start to retire 
 Bootstrap retains the private seen-ID, receipt, and diagnostic markers so disabling and later re-enabling the poll cannot re-notify every still-open incident.
 Better Stack polling from heartbeat handling was an interim practice and is retired; the registered check is the only poll owner, while [`AGENTS.md` section 8](../AGENTS.md#8-supervision-protocol) owns incident triage after a notification arrives.
 
+## Disk floor and reclaim (config/disk-floor)
+
+The Mac-mini disk guard protects against the internal data volume reaching 100% utilization and producing silent write failures instead of a loud, obvious error.
+`bin/fm-disk-lib.sh` is the single owner of the check mechanics: it reads whole-GiB free space on the macOS data volume (`/System/Volumes/Data`) with portable `df -Pk`, resolves the configured floor, and shares one refusal message - current free space, the floor, and the reclaim command - across every caller.
+The default floor is 10GiB; set the local, gitignored `config/disk-floor` to a plain positive integer to override it.
+An absent, malformed, zero, or symlinked override is never trusted and silently keeps the default rather than guessing at unsafe input.
+A volume that cannot be measured at all (an unmounted path, or any non-Mac host, including most CI runners) is treated as unmeasurable and never blocks work - the check fails open on measurement failure, and fails closed (refuses) only on an actual measured breach.
+
+Three surfaces consume the shared check:
+
+- `bin/fm-spawn.sh` refuses a new crewmate or secondmate worktree while the volume is below the floor, before any backend or treehouse work begins.
+- The locked session-start bootstrap prints a `DISK_FLOOR: ...` warning (read-only, so it fires even in lock-refused read-only mode) without blocking bootstrap itself; only `fm-spawn.sh` refuses.
+- Every locked mutating bootstrap sweep unconditionally arms `state/disk-guard.check.sh` through the same registered-check extension point Better Stack incident monitoring uses (`bin/fm-check-register.sh`), so a below-floor condition also produces an ordinary watcher `check:` wake with no bespoke handling in `fm-watch.sh`.
+  Unlike Better Stack, this check needs no external credential or opt-in flag: it is durable and always-on for every home.
+
+`bin/fm-disk-reclaim.sh` is the paired reclaim helper.
+It frees regenerable artifacts - `node_modules` and Rust `target/` directories (only when a sibling `Cargo.toml` confirms they are a real Rust build dir) - from IDLE treehouse pool slots, plus an age-filtered `docker image prune` and `docker builder prune` when Docker is running.
+It is dry-run by default and prints a manifest either way; pass `--apply` to actually remove and prune.
+A pool slot is reclaimed only when treehouse itself reports it `available` (no live process, no lease) **and** `git status --porcelain` is fully clean (no uncommitted or untracked content) **and** the branch has zero commits ahead of a configured upstream - `bin/fm-disk-lib.sh`'s `fm_disk_slot_verdict` is the single owner of that predicate.
+Any other state - in-use, dirty, untracked content, no upstream, unpushed commits - is skipped and reported, never removed.
+Docker reclaim never touches volumes or containers, only dangling images and build cache, both filtered by `--docker-age` (default `24h`) - this preserves live service data on a shared host; see the [storage offload report](fleet-mac-storage-offload-o16.md) for the related host-storage safety context.
+
 ## X mode (.env)
 
 X mode lets a firstmate instance answer public `@myfirstmate` mentions and act on normal reversible mention requests through firstmate's normal lifecycle.
