@@ -29,6 +29,13 @@
 #   A backend spawn refusal (missing dependency, version gate, unauthenticated
 #   socket, or unsupported secondmate mode) is terminal for that selected backend;
 #   callers must surface it instead of silently retrying another backend.
+#   Before any backend or treehouse work begins, a disk floor preflight
+#   (bin/fm-disk-lib.sh) refuses the spawn when the data volume's free space
+#   is below the configured floor (default 10GiB; config/disk-floor
+#   overrides it). The refusal states current free space, the floor, and the
+#   bin/fm-disk-reclaim.sh command; a volume that cannot be read at all (a
+#   non-Mac host, most CI runners) is treated as unmeasurable and never
+#   blocks the spawn.
 #   A herdr crewmate or scout is placed in the exact workspace of the firstmate
 #   or secondmate process launching it, resolved from that process's own herdr
 #   pane rather than from a workspace label (herdr enforces no label uniqueness,
@@ -177,9 +184,19 @@ SUB_HOME_MARKER=".fm-secondmate-home"
 . "$SCRIPT_DIR/fm-busy-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-disk-lib.sh
+. "$SCRIPT_DIR/fm-disk-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
+# Disk floor preflight (fleet-local-disk-guard-o14): refuse a new worktree
+# while the data volume is below the safety floor, before any backend or
+# treehouse work begins - the 2026-08-03 100%-full incident corrupted work
+# through silent write failures rather than a loud one.
+if ! FM_DISK_BREACH_MSG=$(fm_disk_floor_breach "$CONFIG"); then
+  echo "error: refuse: $FM_DISK_BREACH_MSG" >&2
+  exit 1
+fi
 # Skip the watcher guard when re-exec'd for one pair of a batch (FM_SPAWN_NO_GUARD is
 # set by the batch loop below), so the guard runs once for the batch, not once per pair.
 [ -n "${FM_SPAWN_NO_GUARD:-}" ] || "$FM_ROOT/bin/fm-guard.sh" || true
