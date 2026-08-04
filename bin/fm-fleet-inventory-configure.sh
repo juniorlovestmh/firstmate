@@ -3,11 +3,11 @@
 # Usage: fm-fleet-inventory-configure.sh [--check] [--config PATH] [--help]
 set -Eeuo pipefail
 
-readonly ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+readonly ROOT_DIR
 readonly DEFAULT_CONFIG="$ROOT_DIR/docs/examples/fleet-inventory-gcp.spc"
 readonly RUNNER="${FLEET_INVENTORY_RUNNER:-ubuntu@192.168.1.120}"
 readonly SSH_KEY="${FLEET_INVENTORY_SSH_KEY:-/Users/fox/Code/firstmate/data/gh-runner-t1/ci_access_key}"
-readonly REMOTE_CONFIG="/var/lib/fleet-inventory/steampipe/config/gcp.spc"
 
 usage() {
   cat <<'EOF'
@@ -114,7 +114,7 @@ validate_config
 ssh_args=(-i "$SSH_KEY" -o IdentitiesOnly=yes -o BatchMode=yes)
 
 ssh "${ssh_args[@]}" "$RUNNER" \
-  "sudo install -m 0644 -o fleet-inventory -g fleet-inventory /dev/stdin '$REMOTE_CONFIG.next'" \
+  'sudo install -m 0644 -o fleet-inventory -g fleet-inventory /dev/stdin /var/lib/fleet-inventory/steampipe/config/gcp.spc.next' \
   <"$config"
 
 ssh "${ssh_args[@]}" "$RUNNER" 'sudo bash -s' <<'REMOTE'
