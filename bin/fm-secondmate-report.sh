@@ -68,21 +68,24 @@ if [ ! -d "$(dirname "$STATUS_FILE")" ]; then
 fi
 
 token=$(fm_pending_reply_corr_token "$CORR")
+# ISO8601 UTC prefix matches the brief status-timestamp-contract; readers accept
+# both timestamped and legacy bare status lines (bin/fm-classify-lib.sh).
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 if [ "$DOC_MODE" = 1 ]; then
   [ $# -ge 1 ] || usage
   DOC_PATH=$1
   shift
   NOTE=$*
   if [ -n "$NOTE" ]; then
-    printf '%s [%s]: %s (%s via-helper)\n' "$VERB" "$token" "$NOTE" "$DOC_PATH" >> "$STATUS_FILE"
+    printf '%s %s [%s]: %s (%s via-helper)\n' "$TS" "$VERB" "$token" "$NOTE" "$DOC_PATH" >> "$STATUS_FILE"
   else
-    printf '%s [%s]: %s (via-helper)\n' "$VERB" "$token" "$DOC_PATH" >> "$STATUS_FILE"
+    printf '%s %s [%s]: %s (via-helper)\n' "$TS" "$VERB" "$token" "$DOC_PATH" >> "$STATUS_FILE"
   fi
 else
   NOTE=$*
   if [ -n "$NOTE" ]; then
-    printf '%s [%s]: %s (via-helper)\n' "$VERB" "$token" "$NOTE" >> "$STATUS_FILE"
+    printf '%s %s [%s]: %s (via-helper)\n' "$TS" "$VERB" "$token" "$NOTE" >> "$STATUS_FILE"
   else
-    printf '%s [%s]: (via-helper)\n' "$VERB" "$token" >> "$STATUS_FILE"
+    printf '%s %s [%s]: (via-helper)\n' "$TS" "$VERB" "$token" >> "$STATUS_FILE"
   fi
 fi
