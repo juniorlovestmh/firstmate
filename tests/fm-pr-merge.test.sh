@@ -21,6 +21,7 @@ set -u
 fm_git_identity fmtest fmtest@example.invalid
 
 PR_MERGE="$ROOT/bin/fm-pr-merge.sh"
+PR_CHECK="$ROOT/bin/fm-pr-check.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pr-merge-tests)
 
 # Build a fresh sandbox for one test case: a state dir with a task meta and a
@@ -49,6 +50,14 @@ add_gh_mocks() {
   cat > "$case_dir/fakebin/gh-axi" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_AXI_LOG"
+case "${1:-} ${2:-}" in
+  "api "*/pulls/*)
+    printf 'base:\n  ref: %s\n' "${FM_TEST_ACTUAL_BASE:-main}"
+    ;;
+  "api /repos/"*)
+    printf 'default_branch: %s\n' "${FM_TEST_DEFAULT_BASE:-main}"
+    ;;
+esac
 exit 0
 SH
   cat > "$case_dir/fakebin/gh" <<SH
@@ -74,6 +83,8 @@ add_gh_mocks_merge_fails() {
 printf '%s\n' "$*" >> "$FM_TEST_GH_AXI_LOG"
 case "${1:-} ${2:-}" in
   "pr merge") echo "error: pr merge failed" >&2 ; exit 1 ;;
+  "api "*/pulls/*) printf 'base:\n  ref: %s\n' "${FM_TEST_ACTUAL_BASE:-main}" ;;
+  "api /repos/"*) printf 'default_branch: %s\n' "${FM_TEST_DEFAULT_BASE:-main}" ;;
 esac
 exit 0
 SH
@@ -179,9 +190,9 @@ test_missing_meta_refuses_before_merge() {
   pass "fm-pr-merge refuses before merging when task meta is missing"
 }
 
-test_malformed_url_refuses_before_merge() {
+test_unsupported_gitlab_merge_refuses_before_forge_calls() {
   local case_dir rc
-  case_dir=$(make_case malformed-url)
+  case_dir=$(make_case unsupported-gitlab)
   mkdir -p "$case_dir/wt"
   add_gh_mocks "$case_dir" 4444444444444444444444444444444444444444
   : > "$case_dir/gh-axi.log"
@@ -192,16 +203,16 @@ test_malformed_url_refuses_before_merge() {
   rc=$?
   set -e
 
-  expect_code 2 "$rc" "malformed-url: fm-pr-merge should refuse a non-GitHub PR URL"
+  expect_code 2 "$rc" "unsupported-gitlab: fm-pr-merge should refuse a GitLab MR URL"
   assert_grep 'error: invalid PR merge request' "$case_dir/stderr" \
-    "malformed-url: refusal was not fixed and non-probing"
+    "unsupported-gitlab: refusal was not fixed and non-probing"
   assert_no_grep 'pr=https://gitlab.com/example/repo/-/merge_requests/1' "$case_dir/state/task-x1.meta" \
-    "malformed-url: malformed PR URL was recorded in meta"
+    "unsupported-gitlab: MR URL was recorded in meta"
   assert_absent "$case_dir/state/task-x1.check.sh" \
-    "malformed-url: malformed PR URL armed a merge poll"
+    "unsupported-gitlab: MR URL armed a merge poll"
   assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
-    "malformed-url: gh-axi pr merge was invoked for a malformed URL"
-  pass "fm-pr-merge refuses malformed PR URLs before calling gh-axi"
+    "unsupported-gitlab: gh-axi pr merge was invoked for an MR URL"
+  pass "fm-pr-merge refuses its unsupported GitLab merge path before forge calls"
 }
 
 test_rejects_unsafe_url_segments_before_recording() {
@@ -301,13 +312,132 @@ test_parses_pr_url_for_gh_axi() {
   pass "fm-pr-merge parses a GitHub PR URL into gh-axi number and --repo arguments"
 }
 
+test_explicit_expected_base_wins_and_is_recorded() {
+  local case_dir
+  case_dir=$(make_case explicit-base)
+  mkdir -p "$case_dir/wt"
+  printf '%s\n' intended_base=staging >> "$case_dir/state/task-x1.meta"
+  add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  : > "$case_dir/gh-axi.log"
+
+  FM_TEST_ACTUAL_BASE=release FM_TEST_DEFAULT_BASE=main \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/30 \
+      --expect-base release -- --merge \
+      > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "explicit-base: fm-pr-merge rejected the explicit expected base"
+
+  grep -qxF 'pr merge 30 --repo example/repo --merge' "$case_dir/gh-axi.log" \
+    || fail "explicit-base: --expect-base leaked into merge arguments"
+  assert_no_grep '^api /repos/example/repo$' "$case_dir/gh-axi.log" \
+    "explicit-base: repo default was read despite explicit authority"
+  grep -qxF intended_base=release "$case_dir/state/task-x1.meta" \
+    || fail "explicit-base: fm-pr-check did not record the explicit intended base"
+  [ "$(grep -c '^intended_base=' "$case_dir/state/task-x1.meta")" -eq 1 ] \
+    || fail "explicit-base: intended base metadata was duplicated"
+  pass "explicit --expect-base wins and becomes the task's recorded intent"
+}
+
+test_recorded_intended_base_wins_over_default() {
+  local case_dir
+  case_dir=$(make_case recorded-base)
+  mkdir -p "$case_dir/wt"
+  printf '%s\n' intended_base=staging >> "$case_dir/state/task-x1.meta"
+  add_gh_mocks "$case_dir" bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  : > "$case_dir/gh-axi.log"
+
+  FM_TEST_ACTUAL_BASE=staging FM_TEST_DEFAULT_BASE=main \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/31 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "recorded-base: fm-pr-merge ignored recorded intent"
+
+  assert_no_grep '^api /repos/example/repo$' "$case_dir/gh-axi.log" \
+    "recorded-base: repo default was read despite recorded intent"
+  grep -qxF 'pr merge 31 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    || fail "recorded-base: guarded merge was not invoked"
+  pass "recorded intended_base wins over the repository default"
+}
+
+test_repo_default_is_final_expected_base_fallback() {
+  local case_dir
+  case_dir=$(make_case default-base)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" cccccccccccccccccccccccccccccccccccccccc
+  : > "$case_dir/gh-axi.log"
+
+  FM_TEST_ACTUAL_BASE=trunk FM_TEST_DEFAULT_BASE=trunk \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/32 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "default-base: fm-pr-merge did not use the repository default"
+
+  grep -qxF 'api /repos/example/repo' "$case_dir/gh-axi.log" \
+    || fail "default-base: repository default was not read from the forge"
+  grep -qxF 'pr merge 32 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    || fail "default-base: guarded merge was not invoked"
+  pass "repository default is used only when explicit and recorded intent are absent"
+}
+
+test_base_mismatch_refuses_before_recording_or_merge() {
+  local case_dir rc
+  case_dir=$(make_case base-mismatch)
+  mkdir -p "$case_dir/wt"
+  printf '%s\n' intended_base=staging >> "$case_dir/state/task-x1.meta"
+  add_gh_mocks "$case_dir" dddddddddddddddddddddddddddddddddddddddd
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  FM_TEST_ACTUAL_BASE=main run_pr_merge "$case_dir" task-x1 \
+    https://github.com/example/repo/pull/33 -- --merge \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "base-mismatch: fm-pr-merge must refuse"
+  assert_grep 'REFUSED: PR base mismatch' "$case_dir/stderr" \
+    "base-mismatch: refusal was not loud"
+  assert_grep 'actual base: main' "$case_dir/stderr" \
+    "base-mismatch: refusal omitted the actual base"
+  assert_grep 'expected base: staging' "$case_dir/stderr" \
+    "base-mismatch: refusal omitted the expected base"
+  assert_grep 'expect-base staging' "$case_dir/stderr" \
+    "base-mismatch: refusal omitted the exact guarded rerun"
+  assert_no_grep '^pr merge ' "$case_dir/gh-axi.log" \
+    "base-mismatch: forge merge was invoked"
+  assert_no_grep '^pr=' "$case_dir/state/task-x1.meta" \
+    "base-mismatch: refusal armed PR metadata before verification"
+  assert_absent "$case_dir/state/task-x1.check.sh" \
+    "base-mismatch: refusal armed a poll before verification"
+  pass "base mismatch refuses loudly before recording or merging"
+}
+
+test_pr_check_records_optional_intended_base() {
+  local case_dir
+  case_dir=$(make_case check-intended-base)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+
+  FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$case_dir/state" \
+    FM_TEST_GH_AXI_LOG="$case_dir/gh-axi.log" PATH="$case_dir/fakebin:$PATH" \
+    "$PR_CHECK" task-x1 https://github.com/example/repo/pull/34 \
+      --intended-base staging > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "check-intended-base: fm-pr-check rejected optional intent"
+
+  grep -qxF intended_base=staging "$case_dir/state/task-x1.meta" \
+    || fail "check-intended-base: intended base was not recorded"
+  pass "fm-pr-check records optional intended_base metadata"
+}
+
 test_records_pr_and_head_before_merging
 test_merge_failure_propagates_after_recording
 test_extra_merge_args_forwarded
 test_missing_meta_refuses_before_merge
-test_malformed_url_refuses_before_merge
+test_unsupported_gitlab_merge_refuses_before_forge_calls
 test_rejects_unsafe_url_segments_before_recording
 test_repo_override_args_refuse_before_recording
 test_explicit_merge_method_not_overridden
 test_method_equals_merge_method_not_overridden
 test_parses_pr_url_for_gh_axi
+test_explicit_expected_base_wins_and_is_recorded
+test_recorded_intended_base_wins_over_default
+test_repo_default_is_final_expected_base_fallback
+test_base_mismatch_refuses_before_recording_or_merge
+test_pr_check_records_optional_intended_base

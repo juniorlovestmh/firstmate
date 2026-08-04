@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Record a PR-ready task: store one validated canonical pr=<url> and the forge's
-# exact pr_head=<sha> when available, then atomically arm a static merge poll.
+# exact pr_head=<sha> when available and optional intended_base=<branch>, then
+# atomically arm a static merge poll.
 # The watcher check source is byte-for-byte bin/fm-pr-poll.sh; task and PR data
 # live only in a private sidecar and are never interpolated into shell source.
 # A GitHub pull request URL and a GitLab merge request URL are both accepted,
 # including a merge request on a self-hosted GitLab instance.
-# Usage: fm-pr-check.sh <task-id> <pr-url>
+# Usage: fm-pr-check.sh <task-id> <pr-url> [--intended-base <branch>]
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,16 +17,35 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 
-if [ "$#" -ne 2 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 4 ]; then
   echo "error: invalid PR check request" >&2
   exit 2
 fi
 ID=$1
 RAW_URL=$2
+INTENDED_BASE=
+case "$#" in
+  2) ;;
+  3)
+    case "$3" in
+      --intended-base=*) INTENDED_BASE=${3#--intended-base=} ;;
+      *) echo "error: invalid PR check request" >&2; exit 2 ;;
+    esac
+    ;;
+  4)
+    [ "$3" = --intended-base ] || { echo "error: invalid PR check request" >&2; exit 2; }
+    INTENDED_BASE=$4
+    ;;
+  *) echo "error: invalid PR check request" >&2; exit 2 ;;
+esac
 if ! fm_pr_task_id_valid "$ID" || ! fm_pr_url_parse "$RAW_URL"; then
   echo "error: invalid PR check request" >&2
   exit 2
 fi
+[ -z "$INTENDED_BASE" ] || fm_pr_base_ref_valid "$INTENDED_BASE" || {
+  echo "error: invalid intended PR base" >&2
+  exit 2
+}
 URL=$FM_PR_URL
 PROVIDER=$FM_PR_PROVIDER
 HOST=$FM_PR_HOST
@@ -95,9 +115,13 @@ META_TMP=$(mktemp "$STATE/.fm-pr-meta.XXXXXX") || exit 1
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
     pr=*|pr_head=*) ;;
+    intended_base=*)
+      [ -n "$INTENDED_BASE" ] || printf '%s\n' "$line" >> "$META_TMP" || exit 1
+      ;;
     *) printf '%s\n' "$line" >> "$META_TMP" || exit 1 ;;
   esac
 done < "$META"
+[ -z "$INTENDED_BASE" ] || printf 'intended_base=%s\n' "$INTENDED_BASE" >> "$META_TMP" || exit 1
 printf 'pr=%s\n' "$URL" >> "$META_TMP" || exit 1
 [ -z "$PR_HEAD" ] || printf 'pr_head=%s\n' "$PR_HEAD" >> "$META_TMP" || exit 1
 chmod 0600 "$META_TMP" || exit 1
