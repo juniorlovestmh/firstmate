@@ -51,6 +51,20 @@ SH
   chmod +x "$fakebin/treehouse"
 }
 
+# Build a hermetic PATH for the "Docker is not installed" case.  The shared
+# BASE_PATH intentionally contains normal system directories, and some CI
+# images ship a Docker client there even when no daemon is available.  Testing
+# the absent-client branch must not depend on the runner image's inventory.
+make_no_docker_path() {
+  local dir=$1 name source
+  mkdir -p "$dir"
+  for name in awk basename bash cat df dirname du find git head jq mkdir rm sed tail tr wc; do
+    source=$(command -v "$name" 2>/dev/null) || fail "required test command is unavailable: $name"
+    ln -s "$source" "$dir/$name"
+  done
+  printf '%s\n' "$dir"
+}
+
 # --- pool fixture: one safe slot, one dirty slot, one in-use slot ----------
 
 build_pool_fixture() {
@@ -163,13 +177,14 @@ test_unknown_pool_root_skips_gracefully() {
 }
 
 test_docker_not_installed_is_reported() {
-  local case_dir pool fakebin out
+  local case_dir pool fakebin no_docker_bin out
   case_dir="$TMP_ROOT/no-docker"
   mkdir -p "$case_dir"
   pool=$(build_pool_fixture "$case_dir")
   fakebin=$(fm_fakebin "$case_dir")
+  no_docker_bin=$(make_no_docker_path "$case_dir/no-docker-bin")
 
-  out=$(PATH="$fakebin:$BASE_PATH" "$RECLAIM" --treehouse-root "$case_dir/pool" 2>&1)
+  out=$(PATH="$fakebin:$no_docker_bin" "$RECLAIM" --treehouse-root "$case_dir/pool" 2>&1)
   case "$out" in
     *"docker not installed - skipped"*) ;;
     *) fail "with no docker on PATH the manifest should say so, got: $out" ;;
