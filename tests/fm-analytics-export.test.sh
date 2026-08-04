@@ -60,6 +60,16 @@ EOF
 working: leftover
 EOF
 
+  cat >"$home/state/mismatch-zeta.status" <<'EOF'
+needs-decision [key=alpha]: choose alpha
+resolved [key=beta]: chose beta
+EOF
+
+  cat >"$home/state/reopened-eta.status" <<'EOF'
+failed: first attempt failed
+working: retrying
+EOF
+
   cat >"$home/data/learnings.md" <<'EOF'
 # Learnings
 
@@ -129,6 +139,13 @@ test_export_golden_fixture() {
   # orphan residual status included
   assert_json "$snap" '.tasks[] | select(.id=="orphan-epsilon") | .events' '1'
 
+  # Keyed decision folding must not pair unrelated keys.
+  assert_json "$snap" '.tasks[] | select(.id=="mismatch-zeta") | .decision_pairs' '0'
+  assert_json "$snap" '.tasks[] | select(.id=="mismatch-zeta") | .failed_terminal' 'false'
+
+  # A later progress event reopens a task after failure.
+  assert_json "$snap" '.tasks[] | select(.id=="reopened-eta") | .failed_terminal' 'false'
+
   # queued-gamma has no status file: still listed with zero events
   assert_json "$snap" '.tasks[] | select(.id=="queued-gamma") | .events' '0'
 
@@ -147,6 +164,8 @@ test_export_golden_fixture() {
   # TSV header and ship-alpha row (fixed-string assert_grep; match without anchors)
   assert_grep $'id\tevents\tworking\tneeds_decision' "$tsv" "TSV header"
   assert_grep $'ship-alpha\t8\t' "$tsv" "ship-alpha TSV row"
+  assert_grep $'mismatch-zeta\t2\t0\t1\t1\t0\t0\t0\t0\t0\t0\t0\t0\tresolved' "$tsv" "keyed decision TSV row"
+  assert_grep $'reopened-eta\t2\t1\t0\t0\t0\t0\t1\t0\t1\t0\t0\t0\tworking' "$tsv" "reopened failure TSV row"
 
   pass "fm-analytics-export: golden fixture snapshot matches expected counts"
 }

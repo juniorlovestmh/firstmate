@@ -163,12 +163,12 @@ collect_ids() {
 # --- per-task status metrics (verbs only; notes never leave this process) ----
 # Prints one TSV row:
 # id \t events \t working \t needs_decision \t resolved \t blocked \t paused
-#    \t failed \t done \t respawns \t done_with_pr \t failed_terminal \t last_verb
+#    \t failed \t done \t respawns \t done_with_pr \t failed_terminal \t decision_pairs \t last_verb
 analyze_status() {  # <status-file> <task-id>
   local file=$1 id=$2
-  local line verb note prev=''
+  local line verb note key prev='' open_decisions=''
   local events=0 working=0 needs_decision=0 resolved=0 blocked=0 paused=0
-  local failed=0 done=0 respawns=0 done_with_pr=0 failed_terminal=0 last_verb=''
+  local failed=0 done=0 respawns=0 done_with_pr=0 failed_terminal=0 decision_pairs=0 last_verb=''
 
   if [ -f "$file" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
@@ -191,9 +191,26 @@ analyze_status() {  # <status-file> <task-id>
             respawns=$((respawns + 1))
           fi
           ;;
-        needs-decision) needs_decision=$((needs_decision + 1)) ;;
-        resolved) resolved=$((resolved + 1)) ;;
-        blocked) blocked=$((blocked + 1)) ;;
+        needs-decision|blocked)
+          [ "$verb" = needs-decision ] && needs_decision=$((needs_decision + 1))
+          [ "$verb" = blocked ] && blocked=$((blocked + 1))
+          key=$(_fm_decision_key "$line") || key=''
+          if [ -n "$key" ]; then
+            open_decisions=$(_fm_decision_drop "$open_decisions" "$key")
+            [ -n "$open_decisions" ] && open_decisions="${open_decisions}"$'\n'
+            open_decisions="${open_decisions}${key}"$'\t'"${verb}"$'\t'"$(status_line_note "$line")"$'\n'
+          fi
+          failed_terminal=0
+          ;;
+        resolved)
+          resolved=$((resolved + 1))
+          key=$(_fm_decision_key "$line") || key=''
+          if [ -n "$key" ] && [[ "$open_decisions" == *"${key}"$'\t'* ]]; then
+            decision_pairs=$((decision_pairs + 1))
+            open_decisions=$(_fm_decision_drop "$open_decisions" "$key")
+          fi
+          failed_terminal=0
+          ;;
         paused) paused=$((paused + 1)) ;;
         failed)
           failed=$((failed + 1))
@@ -211,14 +228,14 @@ analyze_status() {  # <status-file> <task-id>
           esac
           ;;
       esac
+      [ "$verb" = failed ] || failed_terminal=0
       prev=$verb
     done <"$file"
   fi
 
-  # decision_pairs = closed pairs (min of open/resolve counts) for the rollup
-  printf '%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n' \
+  printf '%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n' \
     "$id" "$events" "$working" "$needs_decision" "$resolved" "$blocked" \
-    "$paused" "$failed" "$done" "$respawns" "$done_with_pr" "$failed_terminal" \
+    "$paused" "$failed" "$done" "$respawns" "$done_with_pr" "$failed_terminal" "$decision_pairs" \
     "$last_verb"
 }
 
@@ -278,7 +295,7 @@ if [ -s "$TASK_TSV" ]; then
     split("\n")
     | map(select(length > 0))
     | map(split("\t"))
-    | map(select(length >= 13))
+    | map(select(length >= 14))
     | map({
         id: .[0],
         events: (.[1]|tonumber),
@@ -294,11 +311,8 @@ if [ -s "$TASK_TSV" ]; then
         respawns: (.[9]|tonumber),
         done_with_pr: ((.[10]|tonumber) == 1),
         failed_terminal: ((.[11]|tonumber) == 1),
-        decision_pairs: (
-          if ((.[3]|tonumber) < (.[4]|tonumber)) then (.[3]|tonumber)
-          else (.[4]|tonumber) end
-        ),
-        last_verb: (if .[12] == "" then null else .[12] end)
+        decision_pairs: (.[12]|tonumber),
+        last_verb: (if .[13] == "" then null else .[13] end)
       })
   ' <"$TASK_TSV" >"$TASK_JSON"
 else
@@ -401,8 +415,7 @@ jq -n \
 {
   printf 'id\tevents\tworking\tneeds_decision\tresolved\tblocked\tpaused\tfailed\tdone\trespawns\tdone_with_pr\tfailed_terminal\tdecision_pairs\tlast_verb\n'
   if [ -s "$TASK_TSV" ]; then
-    while IFS=$'\t' read -r id events working nd res blocked paused failed done_n respawns dpr fterm last; do
-      if [ "$nd" -le "$res" ]; then pairs=$nd; else pairs=$res; fi
+    while IFS=$'\t' read -r id events working nd res blocked paused failed done_n respawns dpr fterm pairs last; do
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$id" "$events" "$working" "$nd" "$res" "$blocked" "$paused" \
         "$failed" "$done_n" "$respawns" "$dpr" "$fterm" "$pairs" "$last"
