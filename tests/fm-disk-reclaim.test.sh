@@ -6,17 +6,56 @@
 #
 # treehouse and docker are faked via PATH shims so the suite never depends on
 # or mutates this host's real fleet or container state. git, jq, du, find,
-# and awk are the real system tools.
+# and awk are the real system tools, reached through a HERMETIC PATH built
+# from symlinks to each tool's resolved absolute path (hermetic_toolpath
+# below) rather than broad system directories like /usr/bin. A broad
+# directory is not safe here: GitHub's ubuntu-latest CI runners ship a real,
+# already-running Docker in /usr/bin, so a case asserting docker's ABSENCE
+# (no fake stub provided) would silently start exercising the real docker
+# there instead of the "not installed" skip path - which is exactly what
+# broke tests/fm-disk-reclaim.test.sh's "docker not installed" case in CI
+# while passing locally on a Mac where Homebrew's docker lives outside
+# /usr/bin. A hermetic PATH makes every tool's presence or absence an
+# explicit, deliberate decision by this file, never an accident of PATH order
+# on whatever host or CI runner the suite happens to run on.
 set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 RECLAIM="$ROOT/bin/fm-disk-reclaim.sh"
-BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
-JQ_DIR=$(command -v jq 2>/dev/null) && JQ_DIR=$(dirname "$JQ_DIR") || JQ_DIR=
-[ -n "$JQ_DIR" ] && BASE_PATH="$JQ_DIR:$BASE_PATH"
 TMP_ROOT=$(fm_test_tmproot fm-disk-reclaim)
+
+# hermetic_toolpath <dir>: a fresh directory containing symlinks to the
+# resolved absolute path of each real tool this suite legitimately needs
+# (git, jq, and the coreutils bin/fm-disk-reclaim.sh and bin/fm-disk-lib.sh
+# invoke, plus bash itself for the `#!/usr/bin/env bash` shebang on direct
+# invocation). Every tool in this allowlist must resolve successfully. Nothing
+# outside this allowlist - crucially docker and treehouse - is ever reachable
+# unless a case's own fakebin provides it.
+hermetic_toolpath() {
+  local dir=$1 tool resolved canonical absolute_dir tools
+  mkdir -p "$dir"
+  tools="bash git jq awk du find wc tr head tail cat mkdir rm df sed cut sort basename dirname mktemp chmod"
+  for tool in $tools; do
+    resolved=$(command -v "$tool" 2>/dev/null) || fail "required test command is unavailable: $tool"
+    if command -v realpath >/dev/null 2>&1; then
+      canonical=$(realpath "$resolved" 2>/dev/null) \
+        || fail "could not resolve an absolute path for test tool: $tool ($resolved)"
+    else
+      absolute_dir=$(cd -P "$(dirname "$resolved")" 2>/dev/null && pwd -P) \
+        || fail "could not resolve an absolute path for test tool: $tool ($resolved)"
+      canonical="$absolute_dir/$(basename "$resolved")"
+    fi
+    case "$canonical" in
+      /*) ln -sf "$canonical" "$dir/$tool" ;;
+      *) fail "resolved test tool path is not absolute: $tool ($canonical)" ;;
+    esac
+  done
+  printf '%s\n' "$dir"
+}
+
+BASE_PATH=$(hermetic_toolpath "$TMP_ROOT/hermetic-tools")
 
 # make_pushed_clean_repo <dir>: an idle, clean, fully-pushed fixture worktree.
 make_pushed_clean_repo() {
@@ -49,20 +88,6 @@ fi
 exit 1
 SH
   chmod +x "$fakebin/treehouse"
-}
-
-# Build a hermetic PATH for the "Docker is not installed" case.  The shared
-# BASE_PATH intentionally contains normal system directories, and some CI
-# images ship a Docker client there even when no daemon is available.  Testing
-# the absent-client branch must not depend on the runner image's inventory.
-make_no_docker_path() {
-  local dir=$1 name source
-  mkdir -p "$dir"
-  for name in awk basename bash cat df dirname du find git head jq mkdir rm sed tail tr wc; do
-    source=$(command -v "$name" 2>/dev/null) || fail "required test command is unavailable: $name"
-    ln -s "$source" "$dir/$name"
-  done
-  printf '%s\n' "$dir"
 }
 
 # --- pool fixture: one safe slot, one dirty slot, one in-use slot ----------
@@ -182,7 +207,7 @@ test_docker_not_installed_is_reported() {
   mkdir -p "$case_dir"
   pool=$(build_pool_fixture "$case_dir")
   fakebin=$(fm_fakebin "$case_dir")
-  no_docker_bin=$(make_no_docker_path "$case_dir/no-docker-bin")
+  no_docker_bin=$(hermetic_toolpath "$case_dir/no-docker-bin")
 
   out=$(PATH="$fakebin:$no_docker_bin" "$RECLAIM" --treehouse-root "$case_dir/pool" 2>&1)
   case "$out" in
@@ -237,8 +262,8 @@ SH
 
   out=$(PATH="$fakebin:$BASE_PATH" "$RECLAIM" --apply --docker-age 12h --treehouse-root "$case_dir/pool" 2>&1)
   case "$out" in
-    *"image prune (until=12h)"*) ;;
-    *) fail "--docker-age should thread through to the image prune filter, got: $out" ;;
+    *"image prune (until=12h): Total reclaimed space: 0B"*"build cache prune (until=12h): Total reclaimed space: 0B"*) ;;
+    *) fail "--docker-age should thread through to both prune filters and report their summaries, got: $out" ;;
   esac
   if grep -qE '^(volume|container)' "$log"; then
     fail "fm-disk-reclaim.sh invoked docker volume/container - volumes and containers must never be touched"
