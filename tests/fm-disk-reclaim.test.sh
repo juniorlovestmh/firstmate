@@ -25,7 +25,11 @@ make_pushed_clean_repo() {
   fm_git_identity
   fm_git_init_commit "$dir"
   fm_git_add_origin "$dir" "$bare"
-  git -C "$dir" push -q -u origin HEAD:main
+  # Push to a deterministic destination, then set the upstream explicitly.
+  # GitHub's Linux Git rejects `push -u HEAD:main` when the local branch has
+  # a different name (for example master).
+  git -C "$dir" push -q origin HEAD:main
+  git -C "$dir" branch --set-upstream-to=origin/main >/dev/null
 }
 
 # fake_treehouse <fakebin> <json>: a treehouse stub whose `status --json`

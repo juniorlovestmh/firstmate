@@ -26,6 +26,14 @@ test_spawn_refuses_below_the_floor() {
   printf '999999\n' > "$home/config/disk-floor"
 
   out=$(FM_HOME="$home" "$SPAWN" some-task "$home/projects" 2>&1) || rc=$?
+  if [ "$(uname -s)" != Darwin ] || [ ! -d /System/Volumes/Data ]; then
+    [ "$rc" -ne 0 ] || fail "expected the minimal spawn fixture to fail later on a non-Mac host"
+    case "$out" in
+      *"error: refuse:"*"below the 999999GiB floor"*) fail "a non-Mac host with no Mac data volume must fail open, got: $out" ;;
+    esac
+    pass "fm-spawn.sh: fails open when the Mac data volume cannot be measured"
+    return
+  fi
   [ "$rc" -ne 0 ] || fail "fm-spawn.sh must refuse (nonzero exit) when free space is below the configured floor"
   case "$out" in
     *"error: refuse:"*"GiB free on"*"is below the 999999GiB floor"*"bin/fm-disk-reclaim.sh --apply"*) ;;
@@ -38,6 +46,11 @@ test_spawn_disk_check_runs_before_treehouse_or_tmux() {
   local home out rc=0
   home=$(make_home "$TMP_ROOT/no-tools-on-path")
   printf '999999\n' > "$home/config/disk-floor"
+
+  if [ "$(uname -s)" != Darwin ] || [ ! -d /System/Volumes/Data ]; then
+    pass "fm-spawn.sh: non-Mac hosts skip the Mac-only preflight before backend checks"
+    return
+  fi
 
   # No tmux/treehouse/gh on this PATH at all - if the disk refusal is not the
   # very first gate, the spawn would fail later with a missing-tool error
