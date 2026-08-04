@@ -379,6 +379,54 @@ test_ship_project_memory_wording() {
   pass "fm-brief.sh: ship project-memory wording carries the AGENTS.md authoring bar"
 }
 
+test_ship_briefs_carry_agent_dogfood_contract() {
+  local home id brief
+  home="$TMP_ROOT/dogfood-home"
+  write_registry "$home"
+
+  for id_proj in "brief-dogfood-nm1:no-registry-proj" "brief-dogfood-dp2:direct-proj" "brief-dogfood-lo3:local-proj"; do
+    id=${id_proj%%:*}
+    proj=${id_proj##*:}
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" "$proj" >/dev/null 2>&1
+    brief="$home/data/$id/brief.md"
+    assert_grep "# Agent dogfood - user-facing changes" "$brief" \
+      "$id: ship brief missing the agent dogfood contract"
+    assert_grep "agent-executed UAT of the REAL running feature" "$brief" \
+      "$id: ship brief missing the real-feature UAT doctrine"
+    assert_grep "CHROME_DEVTOOLS_AXI_SESSION=$id" "$brief" \
+      "$id: ship brief missing the task-keyed isolated browser profile"
+    assert_grep "real CLI/API surface when that IS the user surface" "$brief" \
+      "$id: ship brief missing the CLI/API user-surface alternative"
+    assert_grep "A mismatch means NOT done" "$brief" \
+      "$id: ship brief missing the mismatch-is-not-done rule"
+    assert_grep "what to try in 60 seconds" "$brief" \
+      "$id: ship brief missing the captain 60-second try requirement"
+    assert_grep "an explicit claim, never a silent skip" "$brief" \
+      "$id: ship brief missing the explicit non-user-facing justification rule"
+  done
+  pass "fm-brief.sh: every ship delivery mode carries the agent dogfood contract"
+}
+
+test_scout_and_secondmate_omit_agent_dogfood_contract() {
+  local home brief
+  home="$TMP_ROOT/dogfood-scope-home"
+  mkdir -p "$home/data"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-scout alpha --scout >/dev/null 2>&1
+  brief="$home/data/dogfood-scout/brief.md"
+  assert_no_grep "# Agent dogfood" "$brief" \
+    "scout brief must not carry the ship dogfood contract"
+  assert_no_grep "CHROME_DEVTOOLS_AXI_SESSION" "$brief" \
+    "scout brief must not carry the isolated browser profile instruction"
+  FM_HOME="$home" FM_SECONDMATE_CHARTER='Supervise the alpha domain.' \
+    "$ROOT/bin/fm-brief.sh" dogfood-sm --secondmate alpha >/dev/null 2>&1
+  brief="$home/data/dogfood-sm/brief.md"
+  assert_no_grep "# Agent dogfood" "$brief" \
+    "secondmate charter must not carry the ship dogfood contract"
+  assert_no_grep "CHROME_DEVTOOLS_AXI_SESSION" "$brief" \
+    "secondmate charter must not carry the isolated browser profile instruction"
+  pass "fm-brief.sh: scout and secondmate scaffolds omit the ship dogfood contract"
+}
+
 test_herdr_lab_contract_is_explicit_and_complete() {
   local home id brief
   home="$TMP_ROOT/herdr-lab-home"
@@ -726,6 +774,8 @@ test_ship_modes_generate_clean_briefs
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ship_project_memory_wording
+test_ship_briefs_carry_agent_dogfood_contract
+test_scout_and_secondmate_omit_agent_dogfood_contract
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
 test_herdr_lab_omission_is_loud_for_ship_and_scout

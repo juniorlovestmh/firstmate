@@ -50,6 +50,12 @@
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
 # over copied detail) and has the crewmate add the fm-ensure-agents-md.sh
 # self-governance section when a touched project AGENTS.md lacks it.
+# Ship tasks of every delivery mode also carry the agent-dogfood contract:
+# user-facing changes are exercised end-to-end against the real running app
+# (isolated chrome-devtools-axi browser profile keyed to the task id, or the
+# real CLI/API surface when that is the user surface) with observed-vs-expected
+# evidence in the done report, a runnable URL plus a 60-second captain try,
+# and an explicit no-dogfood justification when the task is not user-facing.
 # Refuses to overwrite or silently reuse an existing brief.
 set -eu
 
@@ -398,6 +404,18 @@ read -r MODE _ <<EOF
 $MODE_OUTPUT
 EOF
 
+# One shared agent-dogfood contract block for every ship delivery mode.
+IFS= read -r -d '' DOGFOOD_SECTION <<EOF || true
+# Agent dogfood - user-facing changes
+Captain doctrine: every user-facing change gets agent-executed UAT of the REAL running feature before the captain ever sees it; a UI an agent cannot drive is a build defect.
+1. If your change is user-facing, before any \`done:\` report, exercise the changed feature end-to-end as a real user against the actually-running app.
+   Drive a real browser session via chrome-devtools-axi with an isolated profile - set \`CHROME_DEVTOOLS_AXI_SESSION=$ID\` so it never collides with the captain's live browser - or exercise the product's real CLI/API surface when that IS the user surface.
+2. Record concrete evidence in your status/done report: which journey you exercised, what you observed, and any mismatch between expected and observed behavior. A mismatch means NOT done - keep working or escalate.
+3. For user-facing work, your \`done:\` report must include the runnable URL (or exact command) plus a one-or-two-line "what to try in 60 seconds" for the captain.
+4. If the task is genuinely not user-facing, your done report must explicitly say why dogfood does not apply - an explicit claim, never a silent skip.
+EOF
+DOGFOOD_SECTION=${DOGFOOD_SECTION%$'\n'}
+
 case "$MODE" in
   direct-PR)
     SETUP2=""
@@ -504,6 +522,8 @@ Record only project knowledge useful to almost every future session.
 For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
 If you touch a project \`AGENTS.md\` that lacks \`## Maintaining this file\`, add that short self-governance section from \`$FM_ROOT/bin/fm-ensure-agents-md.sh\` in the same pass.
 Keep it proportionate: skip \`AGENTS.md\` edits for trivial tasks that produced no durable project knowledge.
+
+$DOGFOOD_SECTION
 
 $DOD
 EOF
