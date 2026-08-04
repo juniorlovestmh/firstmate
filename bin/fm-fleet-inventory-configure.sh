@@ -157,6 +157,20 @@ wait_for_steampipe() {
   return 1
 }
 
+wait_for_powerpipe() {
+  local attempt consecutive=0
+  for attempt in $(seq 1 45); do
+    if systemctl is-active --quiet fleet-inventory.powerpipe.service; then
+      consecutive=$((consecutive + 1))
+      [ "$consecutive" -ge 5 ] && return 0
+    else
+      consecutive=0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 assert_loopback_listeners() {
   local actual expected
   expected=$'127.0.0.1:9033\n127.0.0.1:9193\n[::1]:9193'
@@ -182,6 +196,7 @@ restart_inventory_services() {
   systemctl restart fleet-inventory.steampipe.service
   wait_for_steampipe
   systemctl start fleet-inventory.powerpipe.service
+  wait_for_powerpipe
   assert_loopback_listeners
   wait_for_dashboard http://127.0.0.1:9033/
 }

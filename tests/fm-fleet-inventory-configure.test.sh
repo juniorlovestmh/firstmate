@@ -84,6 +84,7 @@ test_deploy_streams_config_and_limits_the_restart() {
   assert_contains "$remote_program" "127.0.0.1:9033" "Powerpipe loopback listener is not enforced"
   assert_contains "$remote_program" "[::1]:9193" "IPv6 Steampipe loopback listener is not enforced"
   assert_contains "$remote_program" "systemctl start fleet-inventory.powerpipe.service" "Powerpipe reattachment start is missing"
+  assert_contains "$remote_program" "wait_for_powerpipe" "Powerpipe service stability check is missing"
   assert_contains "$remote_program" "gcp_insights.dashboard.project_report" "dashboard verification is missing"
   if printf '%s\n' "$remote_program" | grep -Fq '/usr/local/bin/steampipe query'; then fail "deployment launched a competing Steampipe query process"; fi
   if printf '%s\n' "$remote_program" | grep -Eq 'actions\.runner|gh-runner-preflight'; then fail "deployment crossed into CI runner services"; fi
