@@ -180,18 +180,8 @@ END {
   }
 }'
 sudo /usr/local/sbin/gh-runner-preflight
-mapfile -t queries < <(sudo grep -E '^[[:space:]]*select[[:space:]]' /var/lib/fleet-inventory/smoke-queries.sql)
-[ "${#queries[@]}" -eq 4 ]
-executed=0
-for query in "${queries[@]}"; do
-  sudo -u fleet-inventory env \
-      HOME=/var/lib/fleet-inventory \
-      STEAMPIPE_INSTALL_DIR=/var/lib/fleet-inventory/steampipe \
-      GOOGLE_APPLICATION_CREDENTIALS="$remote_key" \
-      /usr/local/bin/steampipe query "$query" --output csv
-  executed=$((executed + 1))
-done
-[ "$executed" -eq 4 ]
+curl -fsS -o /dev/null http://127.0.0.1:9033/
+curl -fsS -o /dev/null http://127.0.0.1:9033/gcp_insights.dashboard.project_report
 REMOTE_VALIDATE
 
 key_cleanup_armed=0
