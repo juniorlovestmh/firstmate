@@ -24,7 +24,7 @@ The Powerpipe unit must include `--listen local`.
 
 The original installation was hand-provisioned from a private adoption package and had no tracked connection-config owner.
 The repository now owns connection reconciliation through [`fm-fleet-inventory-configure.sh`](../bin/fm-fleet-inventory-configure.sh) and [`examples/fleet-inventory-gcp.spc`](examples/fleet-inventory-gcp.spc).
-The runner keeps the reviewed adoption package at `/var/lib/fleet-inventory/adoption-package`, and its stored Steampipe unit includes the required explicit loopback flag.
+The runner keeps the reviewed adoption package at `/var/lib/fleet-inventory/adoption-package` for initial service installation, and its stored Steampipe unit includes the required explicit loopback flag.
 
 Validate the tracked inventory without contacting the runner:
 
@@ -38,7 +38,8 @@ Deploy the tracked configuration atomically, restart Steampipe and Powerpipe in 
 bin/fm-fleet-inventory-configure.sh
 ```
 
-Before running the installer, confirm the credential file exists without reading it:
+For an already installed runner, the command above is the only connection-config deployment or reconcile path.
+For initial service installation only, confirm the credential file exists without reading it:
 
 ```sh
 ssh -i /Users/fox/Code/firstmate/data/gh-runner-t1/ci_access_key \
