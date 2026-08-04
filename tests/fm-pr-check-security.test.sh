@@ -76,6 +76,14 @@ SH
   cat > "$fakebin/gh-axi" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_AXI_LOG"
+case "${1:-} ${2:-}" in
+  "api "*/pulls/*)
+    printf 'base:\n  ref: %s\n' "${FM_TEST_GH_AXI_ACTUAL_BASE:-main}"
+    ;;
+  "api /repos/"*)
+    printf 'default_branch: %s\n' "${FM_TEST_GH_AXI_DEFAULT_BASE:-main}"
+    ;;
+esac
 exit "${FM_TEST_GH_AXI_RC:-0}"
 SH
   # Plain glab, reproducing the real CLI's contract: its field output on stdout
