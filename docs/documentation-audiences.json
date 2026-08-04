@@ -273,6 +273,10 @@
       "audience": "operator-example"
     },
     {
+      "path": "docs/examples/fleet-inventory-gcp.spc",
+      "audience": "operator-example"
+    },
+    {
       "path": "docs/fleet-powerpipe-inventory.md",
       "audience": "operator-current"
     },
