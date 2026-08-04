@@ -30,26 +30,21 @@ TMP_ROOT=$(fm_test_tmproot fm-disk-reclaim)
 # resolved absolute path of each real tool this suite legitimately needs
 # (git, jq, and the coreutils bin/fm-disk-reclaim.sh and bin/fm-disk-lib.sh
 # invoke, plus bash itself for the `#!/usr/bin/env bash` shebang on direct
-# invocation). Any tool not present on this host is silently skipped rather
-# than failing the setup - the suite's own assertions catch a genuinely
-# missing dependency. Nothing outside this allowlist - crucially docker and
-# treehouse - is ever reachable unless a case's own fakebin provides it.
+# invocation). Every tool in this allowlist must resolve successfully. Nothing
+# outside this allowlist - crucially docker and treehouse - is ever reachable
+# unless a case's own fakebin provides it.
 hermetic_toolpath() {
   local dir=$1 tool resolved canonical absolute_dir tools
   mkdir -p "$dir"
   tools="bash git jq awk du find wc tr head tail cat mkdir rm df sed cut sort basename dirname mktemp chmod"
   for tool in $tools; do
-    resolved=$(command -v "$tool" 2>/dev/null) || continue
+    resolved=$(command -v "$tool" 2>/dev/null) || fail "required test command is unavailable: $tool"
     if command -v realpath >/dev/null 2>&1; then
-      canonical=$(realpath "$resolved" 2>/dev/null) || {
-        fail "could not resolve an absolute path for test tool: $tool ($resolved)"
-        continue
-      }
+      canonical=$(realpath "$resolved" 2>/dev/null) \
+        || fail "could not resolve an absolute path for test tool: $tool ($resolved)"
     else
-      absolute_dir=$(cd -P "$(dirname "$resolved")" 2>/dev/null && pwd -P) || {
-        fail "could not resolve an absolute path for test tool: $tool ($resolved)"
-        continue
-      }
+      absolute_dir=$(cd -P "$(dirname "$resolved")" 2>/dev/null && pwd -P) \
+        || fail "could not resolve an absolute path for test tool: $tool ($resolved)"
       canonical="$absolute_dir/$(basename "$resolved")"
     fi
     case "$canonical" in
@@ -93,20 +88,6 @@ fi
 exit 1
 SH
   chmod +x "$fakebin/treehouse"
-}
-
-# Build a hermetic PATH for the "Docker is not installed" case.  The shared
-# BASE_PATH intentionally contains normal system directories, and some CI
-# images ship a Docker client there even when no daemon is available.  Testing
-# the absent-client branch must not depend on the runner image's inventory.
-make_no_docker_path() {
-  local dir=$1 name source
-  mkdir -p "$dir"
-  for name in awk basename bash cat df dirname du find git head jq mkdir rm sed tail tr wc; do
-    source=$(command -v "$name" 2>/dev/null) || fail "required test command is unavailable: $name"
-    ln -s "$source" "$dir/$name"
-  done
-  printf '%s\n' "$dir"
 }
 
 # --- pool fixture: one safe slot, one dirty slot, one in-use slot ----------
@@ -226,7 +207,7 @@ test_docker_not_installed_is_reported() {
   mkdir -p "$case_dir"
   pool=$(build_pool_fixture "$case_dir")
   fakebin=$(fm_fakebin "$case_dir")
-  no_docker_bin=$(make_no_docker_path "$case_dir/no-docker-bin")
+  no_docker_bin=$(hermetic_toolpath "$case_dir/no-docker-bin")
 
   out=$(PATH="$fakebin:$no_docker_bin" "$RECLAIM" --treehouse-root "$case_dir/pool" 2>&1)
   case "$out" in
