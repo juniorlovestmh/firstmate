@@ -157,23 +157,51 @@ status_is_paused_or_captain_held() {  # <status-line>
 #   resolved       [key=api-shape]: <how it was decided>
 # A line with no token uses the key "default", preserving the historical
 # one-open-decision-per-task behavior (a bare "resolved:" closes "default").
+#
+# Optional ISO8601 UTC prefix (captain-approved status-timestamp-contract):
+#   2026-07-19T12:00:00Z working: setup complete
+# Readers MUST accept both bare and timestamp-prefixed lines. status_line_body
+# strips a leading YYYY-MM-DDTHH:MM:SSZ token when present so verb/note/key
+# parsers stay correct; fractional seconds are not part of the brief contract.
 # The three parsers are pure reads of a single line; the verb parser strips any
 # key token before the colon so the leading word is recovered cleanly.
+status_line_body() {  # <status-line> -> line with optional ISO8601 UTC prefix removed
+  local line=$1 prefix
+  line=${line#"${line%%[![:space:]]*}"}
+  prefix=${line:0:20}
+  case "$prefix" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z)
+      case "${line:20:1}" in
+        [[:space:]])
+          printf '%s' "${line:21}"
+          return
+          ;;
+      esac
+      ;;
+  esac
+  printf '%s' "$line"
+}
 status_line_verb() {  # <status-line> -> leading verb word
-  local v=${1%%:*}
+  local body v
+  body=$(status_line_body "$1")
+  v=${body%%:*}
   v=${v%%\[key=*}
   v=${v#"${v%%[![:space:]]*}"}
   v=${v%"${v##*[![:space:]]}"}
   printf '%s' "$v"
 }
 status_line_note() {  # <status-line> -> text after the first colon, trimmed
-  case "$1" in
-    *:*) local n=${1#*:}; printf '%s' "${n#"${n%%[![:space:]]*}"}" ;;
-    *) printf '%s' "$1" ;;
+  local body
+  body=$(status_line_body "$1")
+  case "$body" in
+    *:*) local n=${body#*:}; printf '%s' "${n#"${n%%[![:space:]]*}"}" ;;
+    *) printf '%s' "$body" ;;
   esac
 }
 _fm_decision_key() {  # <status-line> -> key slug, or "default" when no token
-  local prefix=${1%%:*} k
+  local body prefix k
+  body=$(status_line_body "$1")
+  prefix=${body%%:*}
   case "$prefix" in
     *\[key=*\]*)
       k=${prefix#*\[key=}
