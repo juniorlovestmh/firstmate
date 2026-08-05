@@ -414,19 +414,19 @@ test_ship_done_templates_require_agent_dogfood_evidence() {
 
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-nm no-registry-proj >/dev/null 2>&1
   brief="$home/data/dogfood-done-nm/brief.md"
-  assert_grep 'append `done: {summary}` to the status file and stop. The done report must also carry' "$brief" \
+  assert_grep "append \`done: {summary}\` to the status file and stop. The done report must also carry" "$brief" \
     "no-mistakes pre-pipeline done template does not require dogfood evidence"
-  assert_grep 'append `done: PR {url} checks green` and stop. The done report must also carry' "$brief" \
+  assert_grep "append \`done: PR {url} checks green\` and stop. The done report must also carry" "$brief" \
     "no-mistakes post-CI done template does not require dogfood evidence"
 
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-dp direct-proj >/dev/null 2>&1
   brief="$home/data/dogfood-done-dp/brief.md"
-  assert_grep 'append `done: PR {url}` to the status file and stop. The done report must also carry' "$brief" \
+  assert_grep "append \`done: PR {url}\` to the status file and stop. The done report must also carry" "$brief" \
     "direct-PR done template does not require dogfood evidence"
 
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-lo local-proj >/dev/null 2>&1
   brief="$home/data/dogfood-done-lo/brief.md"
-  assert_grep 'append `done: ready in branch fm/dogfood-done-lo` to the status file and stop. The done report must also carry' "$brief" \
+  assert_grep "append \`done: ready in branch fm/dogfood-done-lo\` to the status file and stop. The done report must also carry" "$brief" \
     "local-only done template does not require dogfood evidence"
   pass "fm-brief.sh: every ship done template requires dogfood evidence"
 }
