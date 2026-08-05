@@ -407,6 +407,30 @@ test_ship_briefs_carry_agent_dogfood_contract() {
   pass "fm-brief.sh: every ship delivery mode carries the agent dogfood contract"
 }
 
+test_ship_done_templates_require_agent_dogfood_evidence() {
+  local home brief
+  home="$TMP_ROOT/dogfood-done-home"
+  write_registry "$home"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-nm no-registry-proj >/dev/null 2>&1
+  brief="$home/data/dogfood-done-nm/brief.md"
+  assert_grep 'append `done: {summary}` to the status file and stop. The done report must also carry' "$brief" \
+    "no-mistakes pre-pipeline done template does not require dogfood evidence"
+  assert_grep 'append `done: PR {url} checks green` and stop. The done report must also carry' "$brief" \
+    "no-mistakes post-CI done template does not require dogfood evidence"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-dp direct-proj >/dev/null 2>&1
+  brief="$home/data/dogfood-done-dp/brief.md"
+  assert_grep 'append `done: PR {url}` to the status file and stop. The done report must also carry' "$brief" \
+    "direct-PR done template does not require dogfood evidence"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-lo local-proj >/dev/null 2>&1
+  brief="$home/data/dogfood-done-lo/brief.md"
+  assert_grep 'append `done: ready in branch fm/dogfood-done-lo` to the status file and stop. The done report must also carry' "$brief" \
+    "local-only done template does not require dogfood evidence"
+  pass "fm-brief.sh: every ship done template requires dogfood evidence"
+}
+
 test_scout_and_secondmate_omit_agent_dogfood_contract() {
   local home brief
   home="$TMP_ROOT/dogfood-scope-home"
@@ -775,6 +799,7 @@ test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ship_project_memory_wording
 test_ship_briefs_carry_agent_dogfood_contract
+test_ship_done_templates_require_agent_dogfood_evidence
 test_scout_and_secondmate_omit_agent_dogfood_contract
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
