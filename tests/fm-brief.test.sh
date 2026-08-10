@@ -240,13 +240,15 @@ test_existing_current_brief_still_requires_freshness_verification() {
 }
 
 test_force_regeneration_preserves_brief_when_rendering_fails() {
-  local home id brief fake_root status archive_count
+  local home id brief fake_root status archive_count module
   home="$TMP_ROOT/failed-regeneration-home"
   id=failed-regeneration-guard
   brief="$home/data/$id/brief.md"
   fake_root="$home/fake-root"
-  mkdir -p "$(dirname "$brief")" "$fake_root/bin"
+  module="$fake_root/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md"
+  mkdir -p "$(dirname "$brief")" "$fake_root/bin" "$(dirname "$module")"
   printf '%s\n' 'original brief must survive a failed regeneration' > "$brief"
+  printf '%s\n' '# CREDIT RULES (binding)' > "$module"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "$fake_root/bin/fm-project-mode.sh"
   chmod +x "$fake_root/bin/fm-project-mode.sh"
 
