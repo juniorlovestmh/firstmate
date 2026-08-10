@@ -709,6 +709,9 @@ families_for_changed_path() {
     docs/examples/doppler-*-job.yml)
       printf '%s\n' pure-contract-unit
       ;;
+    docs/documentation-audiences.json)
+      printf '%s\n' pure-contract-unit
+      ;;
     .github/*|.tasks.toml|AGENTS.md|CLAUDE.md|CONTRIBUTING.md|\
     docs/configuration.md|docs/supervision-protocols/*)
       printf '%s\n' pure-contract-unit

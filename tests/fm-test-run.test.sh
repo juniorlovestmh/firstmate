@@ -123,12 +123,13 @@ init_changed_fixture_repo() {
   printf '# .pi/extensions/fm-primary-pi-watch.ts\n' >>"$repo/tests/fm-pi-watch-extension.test.sh"
   mkdir -p "$repo/.agents/skills/example" \
     "$repo/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets" \
-    "$repo/.claude" "$repo/.pi/extensions" "$repo/src"
+    "$repo/.claude" "$repo/.pi/extensions" "$repo/src" "$repo/docs"
   : >"$repo/.agents/skills/example/SKILL.md"
   : >"$repo/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md"
   : >"$repo/.claude/settings.json"
   : >"$repo/.pi/extensions/fm-primary-pi-watch.ts"
   : >"$repo/.pi/extensions/fm-primary-turnend-guard.ts"
+  printf '{}\n' >"$repo/docs/documentation-audiences.json"
   : >"$repo/src/unmapped.ts"
   git -C "$repo" init -q
   git -C "$repo" add .
@@ -182,6 +183,13 @@ test_changed_dependency_selection_and_unmapped_failure() {
     "honest-work transport module selects prose ownership coverage"
   git -C "$repo" add .agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm honest-work-module-change
+
+  printf '{"audiences": []}\n' >"$repo/docs/documentation-audiences.json"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  assert_contains "$listed" "tests/fm-documentation-audiences.test.sh" \
+    "documentation audience inventory selects prose ownership coverage"
+  git -C "$repo" add docs/documentation-audiences.json
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm documentation-audiences-change
 
   printf '\n' >>"$repo/src/unmapped.ts"
   set +e
