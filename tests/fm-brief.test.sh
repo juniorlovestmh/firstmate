@@ -323,11 +323,15 @@ test_every_generated_instruction_carries_honest_work_credit_rules() {
     assert_present "$brief" "$kind instruction was not generated"
     assert_grep '# CREDIT RULES (binding)' "$brief" \
       "$kind instruction omitted the binding credit-rules module"
-    assert_grep 'Real code and real tests must ship in the same work item.' "$brief" \
-      "$kind instruction omitted the code-plus-tests credit floor"
+    assert_grep 'When the assigned work changes code, real code and real tests must ship in the same work item.' "$brief" \
+      "$kind instruction omitted the scoped code-plus-tests credit floor"
+    assert_grep 'Knowledge-only work, including a scout report, does not authorize implementation; deliver only the assigned evidence or report.' "$brief" \
+      "$kind instruction omitted the knowledge-only scope boundary"
     assert_grep 'Mocks, fixtures, captures, and replay are never live proof.' "$brief" \
       "$kind instruction omitted the proof-class boundary"
-    assert_grep 'Process artifacts are not progress unless they name a concrete consumer' "$brief" \
+    assert_grep 'An explicitly assigned knowledge deliverable is authorized by that assignment' "$brief" \
+      "$kind instruction omitted the assigned knowledge-deliverable boundary"
+    assert_grep 'Do not create any other process artifact unless it names a concrete consumer' "$brief" \
       "$kind instruction omitted the process-artifact creation gate"
     assert_grep 'A worker or subagent report is a claim, not evidence.' "$brief" \
       "$kind instruction omitted the report-is-a-claim boundary"
