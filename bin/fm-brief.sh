@@ -148,7 +148,7 @@ HONEST_WORK_RULES=$(cat "$HONEST_WORK_MODULE") || {
   echo "error: could not read honest-work credit-rules module: $HONEST_WORK_MODULE" >&2
   exit 1
 }
-if [ -z "$HONEST_WORK_RULES" ]; then
+if [ -z "${HONEST_WORK_RULES//[[:space:]]/}" ]; then
   echo "error: required honest-work credit-rules module is empty: $HONEST_WORK_MODULE" >&2
   exit 1
 fi

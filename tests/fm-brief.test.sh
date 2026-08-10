@@ -358,6 +358,26 @@ test_missing_honest_work_module_refuses_before_writing_a_brief() {
   pass "fm-brief.sh: a missing canonical credit-rules module refuses before writing a brief"
 }
 
+test_whitespace_only_honest_work_module_refuses_before_writing_a_brief() {
+  local home fake_root id err status=0 module
+  home="$TMP_ROOT/honest-work-whitespace-home"
+  fake_root="$TMP_ROOT/honest-work-whitespace-root"
+  id=honest-work-whitespace
+  err="$home/generate.err"
+  module="$fake_root/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md"
+  mkdir -p "$home/data" "$(dirname "$module")"
+  printf ' \t\n  \n' >"$module"
+
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fake_root" \
+    "$ROOT/bin/fm-brief.sh" "$id" sample-project >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a whitespace-only honest-work module must stop instruction generation"
+  assert_grep 'required honest-work credit-rules module is empty' "$err" \
+    "whitespace-only honest-work module did not produce the owning diagnostic"
+  assert_absent "$home/data/$id/brief.md" \
+    "whitespace-only honest-work module still left a launchable instruction file"
+  pass "fm-brief.sh: a whitespace-only canonical credit-rules module refuses before writing a brief"
+}
+
 test_faster_paths_use_configured_authority_without_stacked_review() {
   local home id brief
   home="$TMP_ROOT/configured-authority-home"
@@ -860,6 +880,7 @@ test_force_regeneration_preserves_brief_when_rendering_fails
 test_ship_modes_generate_clean_briefs
 test_every_generated_instruction_carries_honest_work_credit_rules
 test_missing_honest_work_module_refuses_before_writing_a_brief
+test_whitespace_only_honest_work_module_refuses_before_writing_a_brief
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ship_project_memory_wording
