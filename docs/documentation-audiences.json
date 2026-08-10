@@ -160,6 +160,38 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/assets/honesty-inventory.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/assets/process-porn-worksheet.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/assets/real-work-audit-worksheet.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/references/ENFORCEMENT.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/references/HONESTY-PROTOCOL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/references/REWARD-HACKING-CATALOG.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/mobile-mode/SKILL.md",
       "audience": "agent-runtime"
     },

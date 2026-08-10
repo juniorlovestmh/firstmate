@@ -56,6 +56,10 @@
 # real CLI/API surface when that is the user surface) with observed-vs-expected
 # evidence in the done report, a runnable URL plus a 60-second captain try,
 # and an explicit no-dogfood justification when the task is not user-facing.
+# Every generated ship, scout, and secondmate instruction carries the canonical
+# honest-work credit-rules module from the bundled agent-only skill. Generation
+# stops before creating a brief when that module is missing or empty, so a
+# partial Firstmate installation cannot silently dispatch without the doctrine.
 # Refuses to overwrite or silently reuse an existing brief.
 set -eu
 
@@ -132,6 +136,20 @@ fi
 
 if [ "$NO_PROJECTS" -eq 1 ] && [ "$KIND" != secondmate ]; then
   echo "error: --no-projects applies only to --secondmate charters" >&2
+  exit 1
+fi
+
+HONEST_WORK_MODULE="$FM_ROOT/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md"
+if [ ! -r "$HONEST_WORK_MODULE" ]; then
+  echo "error: required honest-work credit-rules module is missing or unreadable: $HONEST_WORK_MODULE" >&2
+  exit 1
+fi
+HONEST_WORK_RULES=$(cat "$HONEST_WORK_MODULE") || {
+  echo "error: could not read honest-work credit-rules module: $HONEST_WORK_MODULE" >&2
+  exit 1
+}
+if [ -z "$HONEST_WORK_RULES" ]; then
+  echo "error: required honest-work credit-rules module is empty: $HONEST_WORK_MODULE" >&2
   exit 1
 fi
 
@@ -237,6 +255,8 @@ fi
 cat > "$BRIEF_OUTPUT" <<EOF
 $BRIEF_SAFETY_MARKER
 You are a persistent second mate managed by the main firstmate. Work on your own; do not wait for a human.
+
+$HONEST_WORK_RULES
 
 # Charter
 $SECONDMATE_CHARTER
@@ -345,6 +365,8 @@ if [ "$KIND" = scout ]; then
 cat > "$BRIEF_OUTPUT" <<EOF
 $BRIEF_SAFETY_MARKER
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+
+$HONEST_WORK_RULES
 
 # Task
 {TASK}
@@ -476,6 +498,8 @@ DOD=${DOD%$'\n'}
 cat > "$BRIEF_OUTPUT" <<EOF
 $BRIEF_SAFETY_MARKER
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+
+$HONEST_WORK_RULES
 
 # Task
 {TASK}
