@@ -310,7 +310,6 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
             fm_wake_append stale "$win" "$reason" || exit 1
             rm -f "$since_file"
             wake "$reason"
-            return 0
           fi
           ;;
       esac
