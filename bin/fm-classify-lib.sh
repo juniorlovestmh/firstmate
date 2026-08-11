@@ -207,8 +207,23 @@ status_is_paused_or_captain_held() {  # <status-line>
 # The parsers are pure reads of a single line. Status metadata may contain any
 # number of "[name=value]" tags before the colon, in any order, so verb parsing
 # ends at the first tag rather than special-casing "[key=...]".
+status_line_body() {  # <status-line> -> line with optional ISO8601 UTC prefix removed
+  local line=$1 prefix
+  line=${line#"${line%%[![:space:]]*}"}
+  prefix=${line:0:20}
+  case "$prefix" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z)
+      case "${line:20:1}" in
+        [[:space:]]) printf '%s' "${line:21}"; return ;;
+      esac
+      ;;
+  esac
+  printf '%s' "$line"
+}
 status_line_verb() {  # <status-line> -> leading verb word
-  local v=${1%%:*}
+  local body v
+  body=$(status_line_body "$1")
+  v=${body%%:*}
   v=${v%%\[*}
   v=${v#"${v%%[![:space:]]*}"}
   v=${v%"${v##*[![:space:]]}"}
@@ -217,7 +232,9 @@ status_line_verb() {  # <status-line> -> leading verb word
 # 0 when a complete "[key=...]" token sits in the documented position before
 # the line's first colon (or anywhere on a line that has no colon at all).
 _fm_key_before_colon() {  # <status-line>
-  case "${1%%:*}" in
+  local body
+  body=$(status_line_body "$1")
+  case "${body%%:*}" in
     *\[key=*\]*) return 0 ;;
     *) return 1 ;;
   esac
@@ -228,9 +245,10 @@ _fm_key_before_colon() {  # <status-line>
 # the caller's check via _fm_decision_slug_ok, exactly as for the before-colon
 # position.
 _fm_key_at_note_head() {  # <status-line> -> raw slug
-  local rest
-  case "$1" in
-    *:*) rest=${1#*:} ;;
+  local body rest
+  body=$(status_line_body "$1")
+  case "$body" in
+    *:*) rest=${body#*:} ;;
     *) return 1 ;;
   esac
   rest=${rest#"${rest%%[![:space:]]*}"}
@@ -247,10 +265,11 @@ _fm_decision_slug_ok() {  # <slug>
   esac
 }
 status_line_note() {  # <status-line> -> text after the first colon, trimmed
-  local n k
-  case "$1" in
-    *:*) n=${1#*:}; n=${n#"${n%%[![:space:]]*}"} ;;
-    *) printf '%s' "$1"; return 0 ;;
+  local body n k
+  body=$(status_line_body "$1")
+  case "$body" in
+    *:*) n=${body#*:}; n=${n#"${n%%[![:space:]]*}"} ;;
+    *) printf '%s' "$body"; return 0 ;;
   esac
   # A note-head token that states this line's key (no before-colon token, valid
   # slug) is key metadata, not note text: strip it so both stated-key positions
@@ -263,13 +282,14 @@ status_line_note() {  # <status-line> -> text after the first colon, trimmed
   printf '%s' "$n"
 }
 _fm_decision_key() {  # <status-line> -> key slug, or "default" when no token
-  local k
-  if _fm_key_before_colon "$1"; then
-    k=${1%%:*}
+  local body k
+  body=$(status_line_body "$1")
+  if _fm_key_before_colon "$body"; then
+    k=${body%%:*}
     k=${k#*\[key=}
     k=${k%%\]*}
   else
-    k=$(_fm_key_at_note_head "$1") || { printf 'default'; return 0; }
+    k=$(_fm_key_at_note_head "$body") || { printf 'default'; return 0; }
   fi
   _fm_decision_slug_ok "$k" || return 1
   printf '%s' "$k"

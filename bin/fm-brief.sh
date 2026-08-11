@@ -356,6 +356,18 @@ fi
 # delivery mode, validated above. The generated DOD opens with the fixed
 # "Delivery contract: mode=<mode>" line that bin/fm-spawn.sh checks against its own
 # explicit --mode before launching.
+IFS= read -r -d '' DOGFOOD_SECTION <<EOF || true
+# Agent dogfood - user-facing changes
+Captain doctrine: every user-facing change gets agent-executed UAT of the REAL running feature before the captain ever sees it; a UI an agent cannot drive is a build defect.
+1. If your change is user-facing, before any \`done:\` report, exercise the changed feature end-to-end as a real user against the actually-running app.
+   Drive a real browser session via chrome-devtools-axi with an isolated profile - set \`CHROME_DEVTOOLS_AXI_SESSION=$ID\` so it never collides with the captain's live browser - or exercise the product's real CLI/API surface when that IS the user surface.
+2. Record concrete evidence in your status/done report: which journey you exercised, what you observed, and any mismatch between expected and observed behavior. A mismatch means NOT done - keep working or escalate.
+3. For user-facing work, your \`done:\` report must include the runnable URL (or exact command) plus a one-or-two-line "what to try in 60 seconds" for the captain.
+4. If the task is genuinely not user-facing, your done report must explicitly say why dogfood does not apply - an explicit claim, never a silent skip.
+EOF
+DOGFOOD_SECTION=${DOGFOOD_SECTION%$'\n'}
+DONE_REPORT_CONTRACT='The done report must also carry, for user-facing work, the UAT journey exercised, observations, any expected-vs-observed mismatch, the runnable URL or exact command, and one-or-two-line "what to try in 60 seconds" for the captain; for genuinely non-user-facing work, explicitly justify why dogfood does not apply.'
+
 case "$MODE" in
   direct-PR)
     SETUP2=""
@@ -365,7 +377,7 @@ case "$MODE" in
 Delivery contract: mode=direct-PR
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
-When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
+When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop. $DONE_REPORT_CONTRACT
 Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
 EOF
     ;;
@@ -378,7 +390,7 @@ Delivery contract: mode=local-only
 This task ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$ID\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
-When it is implemented and committed, append \`done: ready in branch fm/$ID\` to the status file and stop.
+When it is implemented and committed, append \`done: ready in branch fm/$ID\` to the status file and stop. $DONE_REPORT_CONTRACT
 The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path.
 EOF
     ;;
@@ -390,7 +402,7 @@ EOF
 # Definition of done
 Delivery contract: mode=no-mistakes
 The task is complete only when committed on your branch.
-When you believe it is complete, append \`done: {summary}\` to the status file and stop.
+When you believe it is complete, append \`done: {summary}\` to the status file and stop. $DONE_REPORT_CONTRACT
 Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
 
 You drive no-mistakes by responding to its gates, not by implementing fixes.
@@ -404,7 +416,7 @@ Two firstmate-specific rules layer on top of that guidance:
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - Avoid \`--yes\`: it would silently bypass firstmate's authority check and any required captain escalation.
 
-After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
+After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. $DONE_REPORT_CONTRACT You are finished.
 EOF
     ;;
 esac
@@ -465,6 +477,8 @@ Record only project knowledge useful to almost every future session.
 For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
 If you touch a project \`AGENTS.md\` that lacks \`## Maintaining this file\`, add that short self-governance section from \`$FM_ROOT/bin/fm-ensure-agents-md.sh\` in the same pass.
 Keep it proportionate: skip \`AGENTS.md\` edits for trivial tasks that produced no durable project knowledge.
+
+$DOGFOOD_SECTION
 
 $DOD
 EOF

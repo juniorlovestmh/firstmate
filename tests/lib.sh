@@ -39,6 +39,10 @@ export FM_GATE_REFUSE_BYPASS=1
 # shellcheck disable=SC2034
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Bootstrap and session-start tests must never inspect the developer's real
+# treehouse fleet. Individual muster cases override this with their fixture.
+export FM_TREEHOUSE_ROOT_OVERRIDE=${FM_TREEHOUSE_ROOT_OVERRIDE:-${TMPDIR:-/tmp}/fm-test-empty-treehouse-$$}
+
 # --- reporters --------------------------------------------------------------
 
 fail() {

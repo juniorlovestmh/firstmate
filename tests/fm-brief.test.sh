@@ -379,7 +379,12 @@ test_ship_briefs_carry_agent_dogfood_contract() {
   for id_proj in "brief-dogfood-nm1:no-registry-proj" "brief-dogfood-dp2:direct-proj" "brief-dogfood-lo3:local-proj"; do
     id=${id_proj%%:*}
     proj=${id_proj##*:}
-    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" "$proj" >/dev/null 2>&1
+    case "$proj" in
+      direct-proj) mode=direct-PR ;;
+      local-proj) mode=local-only ;;
+      *) mode=no-mistakes ;;
+    esac
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" "$proj" --mode "$mode" >/dev/null 2>&1
     brief="$home/data/$id/brief.md"
     assert_grep "# Agent dogfood - user-facing changes" "$brief" \
       "$id: ship brief missing the agent dogfood contract"
@@ -404,19 +409,19 @@ test_ship_done_templates_require_agent_dogfood_evidence() {
   home="$TMP_ROOT/dogfood-done-home"
   write_registry "$home"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-nm no-registry-proj >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-nm no-registry-proj --mode no-mistakes >/dev/null 2>&1
   brief="$home/data/dogfood-done-nm/brief.md"
   assert_grep "append \`done: {summary}\` to the status file and stop. The done report must also carry" "$brief" \
     "no-mistakes pre-pipeline done template does not require dogfood evidence"
   assert_grep "append \`done: PR {url} checks green\` and stop. The done report must also carry" "$brief" \
     "no-mistakes post-CI done template does not require dogfood evidence"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-dp direct-proj >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-dp direct-proj --mode direct-PR >/dev/null 2>&1
   brief="$home/data/dogfood-done-dp/brief.md"
   assert_grep "append \`done: PR {url}\` to the status file and stop. The done report must also carry" "$brief" \
     "direct-PR done template does not require dogfood evidence"
 
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-lo local-proj >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" dogfood-done-lo local-proj --mode local-only >/dev/null 2>&1
   brief="$home/data/dogfood-done-lo/brief.md"
   assert_grep "append \`done: ready in branch fm/dogfood-done-lo\` to the status file and stop. The done report must also carry" "$brief" \
     "local-only done template does not require dogfood evidence"

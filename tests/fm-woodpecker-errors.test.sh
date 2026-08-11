@@ -120,7 +120,7 @@ test_missing_doppler_and_token_report_once() {
 
   out=$(PATH="$BASE_PATH" FM_HOME="$dir/home" "$POLL"); rc=$?
   expect_code 0 "$rc" "missing Doppler poll exit"
-  [ "$out" = 'woodpecker-poll-error missing doppler' ] \
+  [ "$out" = 'woodpecker-poll-error Doppler access unavailable for fleet-ci/prd' ] \
     || fail "missing Doppler must print one diagnostic (got: $out)"
   out=$(PATH="$BASE_PATH" FM_HOME="$dir/home" "$POLL"); rc=$?
   expect_code 0 "$rc" "repeated missing Doppler poll exit"

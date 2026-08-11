@@ -258,6 +258,17 @@ SH
     FM_CHECK_INTERVAL=0 FM_HEARTBEAT=999999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
     "$WATCH"); rc=$?
   expect_code 0 "$rc" "receipt recovery watcher exit"
+  if [ ! -e "$state/better-stack-incidents.seen/92" ] && [ "$out" = 'check: rearm-resurface' ]; then
+    rm -f "$state/.last-check"
+    out=$(PATH="$dir/fakebin:$BASE_PATH" \
+      FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" \
+      FM_TEST_DOPPLER_LOG="$dir/doppler.log" FM_TEST_CURL_LOG="$dir/curl.log" \
+      FM_TEST_CURL_COUNT="$dir/curl.count" FM_TEST_BETTER_STACK_TOKEN=synthetic-test-token \
+      FM_TEST_API_BODY="$body" FM_TEST_API_CODE=200 \
+      FM_WATCH_HANDLING_SUCCESSOR=1 FM_CHECK_INTERVAL=0 FM_HEARTBEAT=999999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+      "$WATCH"); rc=$?
+    expect_code 0 "$rc" "receipt recovery watcher exit after rearm resurface"
+  fi
   assert_present "$state/better-stack-incidents.seen/92" \
     "receipt recovery must converge the private seen marker after queue drain"
   [ ! -e "$state/.wake-queue" ] || [ -z "$(cat "$state/.wake-queue")" ] \

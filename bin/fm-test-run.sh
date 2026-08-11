@@ -1040,7 +1040,7 @@ families_for_changed_path() {
       ;;
     docs/fm-test-portable-shards.md|docs/fm-test-isolation-proof.md|\
     docs/fm-test-isolation-proof.json|docs/secrets-*|docs/examples/project-secrets-policy.json|\
-    docs/examples/doppler-*-job.yml|.agents/skills/secrets-management/SKILL.md)
+    docs/examples/doppler-*-job.yml)
       printf '%s\n' pure-contract-unit
       ;;
     docs/documentation-audiences.json)

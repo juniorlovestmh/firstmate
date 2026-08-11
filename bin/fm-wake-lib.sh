@@ -1176,6 +1176,75 @@ fm_wake_queued_keys_locked() {
     "$FM_WAKE_QUEUE" 2>/dev/null || true
 }
 
+fm_wake_incident_receipt_valid() {
+  local receipt=$1 id=$2 version receipt_id payload
+  local receipt_dir=${receipt%/*} base=${receipt##*/}
+  fmx_private_artifact_file_valid "$receipt_dir" "$base" 600 || return 1
+  exec 9< "$receipt" || return 1
+  IFS= read -r version <&9 || { exec 9<&-; return 1; }
+  IFS= read -r receipt_id <&9 || { exec 9<&-; return 1; }
+  IFS= read -r payload <&9 || { exec 9<&-; return 1; }
+  if IFS= read -r <&9; then exec 9<&-; return 1; fi
+  exec 9<&-
+  [ "$version" = fm-better-stack-incident-receipt-v1 ] || return 1
+  [ "$receipt_id" = "$id" ] || return 1
+  [ -n "$payload" ]
+}
+
+fm_wake_append_incident_once() {
+  local id=$1 payload=$2 key="better-stack-incident:$1"
+  local seen_dir="$STATE/better-stack-incidents.seen" seen_file="$STATE/better-stack-incidents.seen/$1"
+  local receipt_dir="$STATE/better-stack-incidents.receipts" receipt="$STATE/better-stack-incidents.receipts/$1"
+  local epoch seq seq_file status=0 receipt_rc marker_rc
+  [[ "$id" =~ ^[0-9]+$ ]] || return 2
+  declare -F fmx_private_artifact_file_valid >/dev/null 2>&1 || return 2
+  declare -F fmx_private_artifact_publish_stdin_once >/dev/null 2>&1 || return 2
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
+  if fmx_private_artifact_file_valid "$seen_dir" "$id" 600; then
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"; return 0
+  elif [ -e "$seen_file" ] || [ -L "$seen_file" ]; then
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"; return 2
+  fi
+  if fm_wake_incident_receipt_valid "$receipt" "$id"; then
+    printf 'seen\n' | fmx_private_artifact_publish_stdin_once "$seen_dir" "$id" 600 >/dev/null 2>&1
+    marker_rc=$?
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    [ "$marker_rc" -eq 0 ] || [ "$marker_rc" -eq 1 ] || return 2
+    return 0
+  elif [ -e "$receipt" ] || [ -L "$receipt" ]; then
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"; return 2
+  fi
+  if awk -F '\t' -v key="$key" '$3 == "check" && $4 == key { found=1 } END { exit !found }' "$FM_WAKE_QUEUE" 2>/dev/null; then
+    printf 'fm-better-stack-incident-receipt-v1\n%s\n%s\n' "$id" "$payload" | fmx_private_artifact_publish_stdin_once "$receipt_dir" "$id" 600 >/dev/null 2>&1
+    receipt_rc=$?
+    if [ "$receipt_rc" -ne 0 ] && [ "$receipt_rc" -ne 1 ]; then fm_lock_release "$FM_WAKE_QUEUE_LOCK"; return 2; fi
+    printf 'seen\n' | fmx_private_artifact_publish_stdin_once "$seen_dir" "$id" 600 >/dev/null 2>&1
+    marker_rc=$?
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    [ "$marker_rc" -eq 0 ] || [ "$marker_rc" -eq 1 ] || return 2
+    return 0
+  fi
+  epoch=$(date +%s)
+  seq_file="$STATE/.wake-queue.seq"
+  seq=$(cat "$seq_file" 2>/dev/null || echo 0)
+  case "$seq" in ''|*[!0-9]*) seq=0 ;; esac
+  seq=$((seq + 1))
+  printf '%s\n' "$seq" > "$seq_file" || status=$?
+  if [ "$status" -eq 0 ]; then printf '%s\t%s\tcheck\t%s\t%s\n' "$epoch" "$seq" "$key" "$payload" >> "$FM_WAKE_QUEUE" || status=$?; fi
+  if [ "$status" -eq 0 ]; then
+    printf 'fm-better-stack-incident-receipt-v1\n%s\n%s\n' "$id" "$payload" | fmx_private_artifact_publish_stdin_once "$receipt_dir" "$id" 600 >/dev/null 2>&1
+    receipt_rc=$?
+    [ "$receipt_rc" -eq 0 ] || [ "$receipt_rc" -eq 1 ] || status=2
+  fi
+  if [ "$status" -eq 0 ]; then
+    printf 'seen\n' | fmx_private_artifact_publish_stdin_once "$seen_dir" "$id" 600 >/dev/null 2>&1
+    marker_rc=$?
+    [ "$marker_rc" -eq 0 ] || [ "$marker_rc" -eq 1 ] || status=2
+  fi
+  fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+  return "$status"
+}
+
 fm_wake_woodpecker_receipt_valid() {
   local receipt=$1 identity=$2 version receipt_identity payload
   local receipt_dir=${receipt%/*} base=${receipt##*/}

@@ -165,6 +165,46 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/i-have-adhd/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/assets/honesty-inventory.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/assets/process-porn-worksheet.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/assets/real-work-audit-worksheet.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/references/ENFORCEMENT.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/references/HONESTY-PROTOCOL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/just-say-no-to-process-porn-and-ceremony/references/REWARD-HACKING-CATALOG.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/mobile-mode/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/process-event-sources/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -178,6 +218,10 @@
     },
     {
       "path": ".agents/skills/secondmate-provisioning/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/secrets-management/SKILL.md",
       "audience": "agent-runtime"
     },
     {
@@ -265,6 +309,18 @@
       "audience": "operator-example"
     },
     {
+      "path": "docs/examples/doppler-oidc-job.yml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/doppler-service-token-job.yml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/project-secrets-policy.json",
+      "audience": "operator-example"
+    },
+    {
       "path": "docs/examples/watched-tools.json",
       "audience": "operator-example"
     },
@@ -349,6 +405,18 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/moshi-mobile-review.md",
+      "audience": "operator-current"
+    },
+    {
+      "path": "docs/promotion-ladder.md",
+      "audience": "operator-current"
+    },
+    {
+      "path": "docs/toolchain-versions.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/trace-context.md",
       "audience": "maintainer-architecture"
     },
@@ -362,6 +430,10 @@
     },
     {
       "path": "docs/verification/muse.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/verification/moshi-mobile-review.md",
       "audience": "maintainer-verification"
     },
     {

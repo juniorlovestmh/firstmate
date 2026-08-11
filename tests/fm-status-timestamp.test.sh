@@ -123,7 +123,7 @@ test_brief_documents_iso_status_protocol() {
   cat >"$home/data/projects.md" <<'EOF'
 - firstmate: no-mistakes
 EOF
-  FM_HOME="$home" "$BRIEF" brief-iso-task firstmate >/dev/null \
+  FM_HOME="$home" "$BRIEF" brief-iso-task firstmate --mode no-mistakes >/dev/null \
     || fail "fm-brief ship failed"
   brief="$home/data/brief-iso-task/brief.md"
   [ -f "$brief" ] || fail "brief not written"
