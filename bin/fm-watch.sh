@@ -294,6 +294,26 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
     *)
       now=$(date +%s)
       age=$(( now - since ))
+      absorb_since=$(cat "$absorb_file" 2>/dev/null || true)
+      case "$absorb_since" in
+        ''|*[!0-9]*) ;;
+        *)
+          absorb_age=$(( now - absorb_since ))
+          if [ "$absorb_age" -ge "$BUSY_TURN_MAX_SECS" ]; then
+            rm -f "$absorb_file"
+            n=$(( $(cat "$escalation_file" 2>/dev/null || echo 0) + 1 ))
+            echo "$n" > "$escalation_file"
+            reason="stale: $win (idle ${age}s, possible wedge, escalation $n)"
+            if [ "$n" -ge "$FM_WEDGE_DEMAND_INSPECT_COUNT" ]; then
+              reason="stale: $win (idle ${age}s, possible wedge, escalation $n, demand-deep-inspection: same pane has wedge-escalated $n times in a row - do not re-absorb on the run-step/pane state alone)"
+            fi
+            fm_wake_append stale "$win" "$reason" || exit 1
+            rm -f "$since_file"
+            wake "$reason"
+            return 0
+          fi
+          ;;
+      esac
       if [ "$age" -ge "$STALE_ESCALATE_SECS" ]; then
         task=$(window_to_task "$win" "$STATE")
         class=$(crew_absorb_class "$task")
@@ -312,6 +332,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
         else
           rm -f "$absorb_file"
         fi
+        rm -f "$absorb_file"
         n=$(( $(cat "$escalation_file" 2>/dev/null || echo 0) + 1 ))
         echo "$n" > "$escalation_file"
         reason="stale: $win (idle ${age}s, possible wedge, escalation $n)"

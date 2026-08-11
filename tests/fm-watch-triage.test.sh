@@ -1242,6 +1242,7 @@ test_busy_pane_stable_hash_escalates_past_turn_age_bound() {
   printf '1\n' > "$state/.count-$key"
   # No completed turn ever recorded for this task: age the spawn record itself.
   touch -t 200001010000 "$state/busy-stable.meta"
+  export FM_FAKE_CREW_STATE='state: working · source: pane · harness busy'
 
   # Phase A: past the bound, the stable-hash busy pane is absorbed but starts
   # the wedge timer (mirrors the existing provably-working-stale Phase A/B).
@@ -1255,17 +1256,36 @@ test_busy_pane_stable_hash_escalates_past_turn_age_bound() {
   [ -s "$state/.stale-since-$key" ] || fail "a stable-hash busy pane past the turn-age bound did not start a wedge timer"
   reap "$pid"
 
-  # Phase B: backdate the wedge timer past the threshold; the next poll escalates.
+  # Phase B: backdate the wedge timer past the threshold; the authoritative
+  # busy verdict is re-read, resetting the timer and suppressing the wake.
   echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
+  printf '1\n' > "$state/.wedge-escalations-$key"
   : > "$out"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_STATE_OVERRIDE="$state" FM_BUSY_TURN_MAX_SECS=1 FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_STATE_OVERRIDE="$state" FM_BUSY_TURN_MAX_SECS=3600 FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
   pid=$!
-  wait_for_exit "$pid" 40 || fail "a stable-hash busy pane did not wedge-escalate past the turn-age bound"
-  grep -F "stale: $window" "$out" >/dev/null || fail "busy turn-age escalation did not print the stale wake"
-  grep -F "possible wedge" "$out" >/dev/null || fail "busy turn-age escalation did not flag a possible wedge"
-  pass "a busy worker with a stable pane hash still escalates once its completed-turn age reaches the bound"
+  wait_file_contains "$state/.watch-triage.log" "absorbed wedge escalation (active validation re-verified): $window" 40 \
+    || { reap "$pid"; fail "a stable-hash busy pane did not re-verify its working verdict"; }
+  wait_live "$pid" 10 || fail "a stable-hash busy pane exited after working re-verification: $(cat "$out")"
+  [ ! -s "$out" ] || { reap "$pid"; fail "a re-verified busy pane printed a wake: $(cat "$out")"; }
+  [ ! -e "$state/.wedge-escalations-$key" ] || { reap "$pid"; fail "working busy re-verification did not reset escalation count"; }
+  [ -s "$state/.wedge-absorb-since-$key" ] || { reap "$pid"; fail "working busy re-verification did not start absorbed-span tracking"; }
+  reap "$pid"
+
+  # Phase C: the absorbed span backstop surfaces without waiting for the next
+  # STALE_ESCALATE_SECS interval.
+  echo $(( $(date +%s) - 500 )) > "$state/.wedge-absorb-since-$key"
+  : > "$out"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_STATE_OVERRIDE="$state" FM_BUSY_TURN_MAX_SECS=1 FM_STALE_ESCALATE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 40 || fail "a stable-hash busy pane stayed absorbed past the turn-age backstop"
+  grep -E "^stale: $window \\(idle [0-9]+s, possible wedge, escalation 1\\)$" "$out" >/dev/null \
+    || fail "busy absorbed-span backstop changed the wedge reason shape: $(cat "$out")"
+  unset FM_FAKE_CREW_STATE
+  pass "a busy worker re-verifies without waking, then surfaces at the absorbed-span backstop"
 }
 
 # Regression fixture for the incident's actual masking condition: Pi's rendered
@@ -1282,6 +1302,7 @@ test_busy_pane_changing_hash_escalates_past_turn_age_bound() {
   sig=$(seen_sig "$state/busy-ticking.status"); printf '%s' "$sig" > "$state/.seen-busy-ticking_status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   touch -t 200001010000 "$state/busy-ticking.meta"
+  export FM_FAKE_CREW_STATE='state: working · source: pane · harness busy'
   # No pre-seeded .hash-<key>: with a real ticking elapsed footer, every poll
   # lands here (h != prev) - the reproduction's actual masking condition.
 
@@ -1298,18 +1319,32 @@ test_busy_pane_changing_hash_escalates_past_turn_age_bound() {
   reap "$pid"
 
   # Phase B: another tick (still a fresh, never-before-seen hash) plus a
-  # backdated wedge timer escalates exactly as the stable-hash case does.
+  # backdated wedge timer is re-verified as working and absorbed.
   printf 'Working... (3601.2s)' > "$capture_file"
   echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
   : > "$out"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_STATE_OVERRIDE="$state" FM_BUSY_TURN_MAX_SECS=1 FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_STATE_OVERRIDE="$state" FM_BUSY_TURN_MAX_SECS=3600 FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
   pid=$!
-  wait_for_exit "$pid" 40 || fail "a changing-hash busy pane did not wedge-escalate past the turn-age bound"
-  grep -F "stale: $window" "$out" >/dev/null || fail "busy turn-age escalation (changing hash) did not print the stale wake"
-  grep -F "possible wedge" "$out" >/dev/null || fail "busy turn-age escalation (changing hash) did not flag a possible wedge"
-  pass "a busy worker whose pane hash changes every poll still escalates once its completed-turn age reaches the bound"
+  wait_file_contains "$state/.watch-triage.log" "absorbed wedge escalation (active validation re-verified): $window" 40 \
+    || { reap "$pid"; fail "a changing-hash busy pane did not re-verify its working verdict"; }
+  wait_live "$pid" 10 || fail "a changing-hash busy pane exited after working re-verification: $(cat "$out")"
+  [ ! -s "$out" ] || { reap "$pid"; fail "a changing-hash working re-verification printed a wake: $(cat "$out")"; }
+  [ -s "$state/.wedge-absorb-since-$key" ] || { reap "$pid"; fail "a changing-hash re-verification did not start absorbed-span tracking"; }
+  reap "$pid"
+
+  echo $(( $(date +%s) - 500 )) > "$state/.wedge-absorb-since-$key"
+  : > "$out"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_STATE_OVERRIDE="$state" FM_BUSY_TURN_MAX_SECS=1 FM_STALE_ESCALATE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 40 || fail "a changing-hash busy pane stayed absorbed past the turn-age backstop"
+  grep -F "stale: $window" "$out" >/dev/null || fail "changing-hash absorbed-span backstop did not print the stale wake"
+  grep -F "possible wedge" "$out" >/dev/null || fail "changing-hash absorbed-span backstop did not flag a possible wedge"
+  unset FM_FAKE_CREW_STATE
+  pass "a changing-hash busy worker re-verifies, then surfaces at the absorbed-span backstop"
 }
 
 test_busy_pane_turn_end_touch_resets_age() {
