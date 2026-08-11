@@ -75,6 +75,8 @@ config/herdr-presentation-spaces  optional presence flag for Herdr's default-off
 config/cmux-socket-password  optional cmux control-socket password; LOCAL, gitignored; read fresh on every cmux CLI call and passed through without ever overriding an operator's own ambient CMUX_SOCKET_PASSWORD when absent (docs/cmux-backend.md "Setup")
 config/wedge-alarm  optional away-mode wedge-alarm active-alert directives; LOCAL, gitignored; absent means auto (macOS Notification Center when available); see docs/wedge-alarm.md
 config/better-stack-incidents  optional presence flag for the home-scoped Better Stack incident poll; LOCAL, gitignored, and not inherited; see docs/configuration.md "Better Stack incident monitoring"
+config/woodpecker-error-poll  optional presence flag for the home-scoped Woodpecker pipeline-creation error poll; LOCAL, gitignored, and not inherited; see docs/configuration.md "Woodpecker creation-error monitoring"
+config/woodpecker-error-repos  monitored Woodpecker repositories as one owner/name per line; LOCAL, gitignored, and not inherited; see docs/configuration.md "Woodpecker creation-error monitoring"
 config/disk-floor    optional data-volume free-space floor override in whole GiB; LOCAL, gitignored; absent or invalid = default 10; see docs/configuration.md "Disk floor and reclaim"
 config/x-mode.env    generated X-mode watcher cadence; LOCAL, gitignored; source before arming watcher when present
 data/                personal fleet records; LOCAL, gitignored as a whole
@@ -105,7 +107,8 @@ state/               volatile runtime signals; gitignored
   x-watch.check.sh   generated X-mode relay poll shim; present only when opted in (section 14)
   better-stack-incidents.check.sh better-stack-incidents.check-trust  generated and registered home-scoped Better Stack incident poll; present only when opted in
   disk-guard.check.sh disk-guard.check-trust  generated and registered home-scoped Mac-mini disk floor check; always-on, no opt-in flag (docs/configuration.md "Disk floor and reclaim")
-  woodpecker-errors.check.sh woodpecker-errors.check-trust woodpecker-errors.seen/ woodpecker-errors.receipts/ woodpecker-errors.diagnostics/  generated Woodpecker creation-error poll, trust binding, and private wake/dedupe state; present only when opted in
+  woodpecker-errors.check.sh woodpecker-errors.check-trust  generated and registered home-scoped Woodpecker creation-error poll; present only when opted in
+  woodpecker-errors.seen/ woodpecker-errors.receipts/ woodpecker-errors.diagnostics/  private Woodpecker pipeline, wake-recovery, and diagnostic dedupe state; retained across poll disable/re-enable
   better-stack-incidents.seen/ better-stack-incidents.diagnostics/  private incident-ID and diagnostic dedupe state retained across poll disable/re-enable
   pending-replies/   parent-owned secondmate pending-reply records (correlation id, delivery vs reply, recovery, escalation); fm-pending-reply-lib.sh
   x-inbox/           generated X-mode pending mention payloads; fmx-respond drains it (section 14)

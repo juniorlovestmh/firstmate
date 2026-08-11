@@ -340,9 +340,11 @@ The next locked session-start bootstrap requires `doppler`, `curl`, and `jq`, wr
 The registered poll runs through the existing hash-validated custom-check extension point on the default `FM_CHECK_INTERVAL=300` cadence, stays active even with no project work in flight, and converts each output line into a durable `check:` notification.
 
 `bin/fm-woodpecker-errors-poll.sh` invokes its child with `doppler run -p fleet-ci -c prd --only-secrets WOODPECKER_ADMIN_TOKEN` and never persists or prints the token.
+Its public entrypoint re-executes exactly as `doppler run -p fleet-ci -c prd --only-secrets WOODPECKER_ADMIN_TOKEN -- <self> --from-doppler`, with the token available only in the child environment.
 The child sends the bearer header to `curl` through standard input rather than a command argument or temporary file.
 It uses only bounded GET requests against `https://ci.appheat.co/api`: first `GET /repos/lookup/{owner}/{name}`, then `GET /repos/{id}/pipelines?perPage=10`.
-The poll never writes to Woodpecker.
+Each HTTP request has a maximum five-second curl bound, and the complete check finishes within `FM_CHECK_TIMEOUT`.
+The poll never writes to Woodpecker and prints nothing for a quiet or already-seen result.
 
 Only a pipeline whose status is exactly `error` emits `woodpecker-error <owner>/<name> pipeline=<number> <first error message>`.
 The `failure`, `success`, and `killed` statuses stay silent because those step-level outcomes already report through the forge integration.
