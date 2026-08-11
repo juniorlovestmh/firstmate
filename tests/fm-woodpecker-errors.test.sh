@@ -188,6 +188,43 @@ SH
   pass "registered Woodpecker poll delivers one durable wake per new pipeline"
 }
 
+test_woodpecker_receipt_recovers_after_poll_boundary() {
+  local dir state shim body out rc
+  dir=$(make_case receipt-recovery)
+  state="$dir/home/state"
+  shim="$state/woodpecker-errors.check.sh"
+  body='[{"number":40,"status":"error","errors":[{"message":"boundary error"}]}]'
+  cat > "$shim" <<SH
+#!/usr/bin/env bash
+export FM_HOME=$(printf '%q' "$dir/home")
+exec $(printf '%q' "$POLL")
+SH
+  chmod 0700 "$shim"
+  FM_HOME="$dir/home" "$REGISTER" woodpecker-errors >/dev/null \
+    || fail "could not register receipt-recovery custom check"
+
+  out=$(run_poll "$dir" env FM_TEST_WOODPECKER_TOKEN=synthetic-test-token \
+    FM_TEST_PIPELINES_BODY="$body"); rc=$?
+  expect_code 0 "$rc" "receipt-recovery direct poll exit"
+  [ "$out" = 'woodpecker-error appheat/bible-agents pipeline=40 boundary error' ] \
+    || fail "direct poll must emit the new error before watcher recovery (got: $out)"
+  assert_present "$state/woodpecker-errors.receipts/repo-77-pipeline-40" \
+    "direct poll must leave a wake receipt for the watcher"
+
+  out=$(PATH="$dir/fakebin:$BASE_PATH" \
+    FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" \
+    FM_TEST_DOPPLER_LOG="$dir/doppler.log" FM_TEST_CURL_LOG="$dir/curl.log" \
+    FM_TEST_WOODPECKER_TOKEN=synthetic-test-token \
+    FM_TEST_PIPELINES_BODY="$body" FM_CHECK_INTERVAL=0 FM_HEARTBEAT=999999 \
+    FM_POLL=1 FM_SIGNAL_GRACE=1 "$WATCH"); rc=$?
+  expect_code 0 "$rc" "receipt-recovery watcher exit"
+  [ "$(grep -c 'woodpecker-error:repo-77-pipeline-40' "$state/.wake-queue")" -eq 1 ] \
+    || fail "receipt recovery must append exactly one durable Woodpecker wake"
+  assert_absent "$state/woodpecker-errors.receipts/repo-77-pipeline-40" \
+    "receipt recovery must retire the committed wake receipt"
+  pass "Woodpecker receipt recovers a wake across the poll-to-watcher boundary"
+}
+
 test_bootstrap_arms_and_retires_home_check() {
   local dir home out sum1 sum2
   dir=$(make_case bootstrap)
@@ -244,5 +281,6 @@ test_non_error_statuses_stay_silent
 test_missing_doppler_and_token_report_once
 test_empty_repo_config_reports_once
 test_registered_check_delivers_one_wake_per_pipeline
+test_woodpecker_receipt_recovers_after_poll_boundary
 test_bootstrap_arms_and_retires_home_check
 test_woodpecker_check_keeps_home_supervised

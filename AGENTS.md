@@ -105,7 +105,7 @@ state/               volatile runtime signals; gitignored
   x-watch.check.sh   generated X-mode relay poll shim; present only when opted in (section 14)
   better-stack-incidents.check.sh better-stack-incidents.check-trust  generated and registered home-scoped Better Stack incident poll; present only when opted in
   disk-guard.check.sh disk-guard.check-trust  generated and registered home-scoped Mac-mini disk floor check; always-on, no opt-in flag (docs/configuration.md "Disk floor and reclaim")
-  woodpecker-errors.check.sh woodpecker-errors.check-trust woodpecker-errors.seen/ woodpecker-errors.diagnostics/  generated Woodpecker creation-error poll, trust binding, and private dedupe state; present only when opted in
+  woodpecker-errors.check.sh woodpecker-errors.check-trust woodpecker-errors.seen/ woodpecker-errors.receipts/ woodpecker-errors.diagnostics/  generated Woodpecker creation-error poll, trust binding, and private wake/dedupe state; present only when opted in
   better-stack-incidents.seen/ better-stack-incidents.diagnostics/  private incident-ID and diagnostic dedupe state retained across poll disable/re-enable
   pending-replies/   parent-owned secondmate pending-reply records (correlation id, delivery vs reply, recovery, escalation); fm-pending-reply-lib.sh
   x-inbox/           generated X-mode pending mention payloads; fmx-respond drains it (section 14)

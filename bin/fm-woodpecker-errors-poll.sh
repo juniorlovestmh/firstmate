@@ -23,6 +23,7 @@ REPOS_FILE="$CONFIG/woodpecker-error-repos"
 SEEN_DIR="$STATE/woodpecker-errors.seen"
 ERROR_DIR="$STATE/woodpecker-errors.diagnostics"
 ERROR_FILE="$ERROR_DIR/error"
+RECEIPT_DIR="$STATE/woodpecker-errors.receipts"
 API_BASE=https://ci.appheat.co/api
 
 # Reuse the watcher's private-artifact owner for diagnostic and seen markers.
@@ -114,9 +115,26 @@ mark_seen_once() {
   esac
 }
 
+publish_receipt_once() {
+  local identity=$1 payload=$2 receipt="$RECEIPT_DIR/$identity" rc
+  if fmx_private_artifact_file_valid "$RECEIPT_DIR" "$identity" 600; then
+    return 1
+  fi
+  if [ -e "$receipt" ] || [ -L "$receipt" ]; then
+    return 2
+  fi
+  printf 'fm-woodpecker-error-receipt-v1\n%s\n%s\n' "$identity" "$payload" \
+    | fmx_private_artifact_publish_stdin_once "$RECEIPT_DIR" "$identity" 600 >/dev/null 2>&1
+  rc=$?
+  case "$rc" in
+    0|1) return "$rc" ;;
+    *) emit_error_once "could not record Woodpecker wake receipt"; return 2 ;;
+  esac
+}
+
 poll_with_injected_token() {
   local token=${WOODPECKER_ADMIN_TOKEN:-} repo owner name repo_id rows
-  local number message identity mark_rc had_error=0 saw_repo=0
+  local number message identity wake_line receipt_rc mark_rc had_error=0 saw_repo=0
 
   while [[ "$token" == *$'\n' || "$token" == *$'\r' ]]; do
     token=${token%?}
@@ -211,10 +229,19 @@ poll_with_injected_token() {
     while IFS=$'\t' read -r number message; do
       [ -n "$number" ] || continue
       identity="repo-$repo_id-pipeline-$number"
-      mark_seen_once "$identity"
-      mark_rc=$?
-      case "$mark_rc" in
-        0) printf 'woodpecker-error %s pipeline=%s %s\n' "$repo" "$number" "$message" ;;
+      wake_line="woodpecker-error $repo pipeline=$number $message"
+      publish_receipt_once "$identity" "$wake_line"
+      receipt_rc=$?
+      case "$receipt_rc" in
+        0)
+          mark_seen_once "$identity"
+          mark_rc=$?
+          case "$mark_rc" in
+            0) printf '%s\n' "$wake_line" ;;
+            1) ;;
+            *) had_error=1 ;;
+          esac
+          ;;
         1) ;;
         *) had_error=1 ;;
       esac

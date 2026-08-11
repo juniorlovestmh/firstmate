@@ -346,12 +346,12 @@ The poll never writes to Woodpecker.
 
 Only a pipeline whose status is exactly `error` emits `woodpecker-error <owner>/<name> pipeline=<number> <first error message>`.
 The `failure`, `success`, and `killed` statuses stay silent because those step-level outcomes already report through the forge integration.
-Before emitting, the poll atomically publishes the pipeline identity under `state/woodpecker-errors.seen/`, so later polls remain quiet for that repository and pipeline number.
+Before emitting, the poll publishes an identity-bound receipt under `state/woodpecker-errors.receipts/` and then claims the pipeline identity under `state/woodpecker-errors.seen/`. The watcher commits each receipt to one durable `check:` wake under the wake-queue lock, then retires the receipt; a watcher restart recovers any receipt left across that boundary without duplicating an existing wake.
 Missing configuration, credentials, Doppler access, network access, non-success HTTP responses, malformed API data, and dedupe-state failures print one `woodpecker-poll-error ...` diagnostic and record it in `state/woodpecker-errors.diagnostics/error`.
 An identical diagnostic remains silent until a fully successful poll clears the marker or a different failure occurs.
 
 Remove `config/woodpecker-error-poll` and rerun locked session start to retire the runnable check and its trust binding.
-Bootstrap retains the private seen-pipeline and diagnostic markers so disabling and later re-enabling the poll cannot replay known errors.
+Bootstrap retains the private seen-pipeline, receipt, and diagnostic markers so disabling and later re-enabling the poll cannot replay known errors.
 
 ## Disk floor and reclaim (config/disk-floor)
 
