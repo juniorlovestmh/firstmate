@@ -295,6 +295,8 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep "{TASK}" "$brief" "$id: brief missing the {TASK} placeholder"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
+    assert_grep "Do not create or modify CI workflow files (.woodpecker/, .github/workflows/) or shared CI scripts unless this brief's Task section explicitly assigns CI ownership; if your change seems to need a CI edit, append \`blocked:\` and stop." "$brief" \
+      "$id: ship brief missing the CI ownership guardrail"
     assert_no_grep "EOF" "$brief" "$id: brief leaked a heredoc EOF marker (unterminated heredoc)"
   done
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
@@ -349,6 +351,33 @@ test_every_generated_instruction_carries_honest_work_credit_rules() {
       || fail "$kind instruction did not transport the complete canonical credit-rules module"
   done
   pass "fm-brief.sh: ship, scout, and secondmate instructions carry one binding credit-rules module"
+}
+
+test_every_generated_instruction_carries_simple_english_rule() {
+  local home id brief kind rule
+  home="$TMP_ROOT/simple-english-home"
+  mkdir -p "$home/data"
+  rule="Any text the captain reads directly, including reports, summaries, and captain-facing documents, must follow \`~/.claude/skills/simple-english\` in pragmatic mode. Use 20 words per instruction and 25 words per description. Use active voice and one instruction or fact per sentence. Do not use \`should\`, \`may\`, or \`might\`. Agent-to-agent and internal text is exempt."
+
+  for kind in ship scout secondmate; do
+    id="simple-english-$kind"
+    case "$kind" in
+      ship)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" sample-project >/dev/null 2>&1
+        ;;
+      scout)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" sample-project --scout >/dev/null 2>&1
+        ;;
+      secondmate)
+        FM_HOME="$home" FM_SECONDMATE_CHARTER='Review captain-facing text.' \
+          "$ROOT/bin/fm-brief.sh" "$id" --secondmate --no-projects >/dev/null 2>&1
+        ;;
+    esac
+    brief="$home/data/$id/brief.md"
+    assert_grep "$rule" "$brief" \
+      "$kind instruction omitted the captain-facing simple-English rule"
+  done
+  pass "fm-brief.sh: ship, scout, and secondmate instructions carry the simple-English rule"
 }
 
 test_missing_honest_work_module_refuses_before_writing_a_brief() {
@@ -893,6 +922,7 @@ test_existing_current_brief_still_requires_freshness_verification
 test_force_regeneration_preserves_brief_when_rendering_fails
 test_ship_modes_generate_clean_briefs
 test_every_generated_instruction_carries_honest_work_credit_rules
+test_every_generated_instruction_carries_simple_english_rule
 test_missing_honest_work_module_refuses_before_writing_a_brief
 test_whitespace_only_honest_work_module_refuses_before_writing_a_brief
 test_faster_paths_use_configured_authority_without_stacked_review

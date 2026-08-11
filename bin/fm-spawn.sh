@@ -36,6 +36,8 @@
 #   bin/fm-disk-reclaim.sh command; a volume that cannot be read at all (a
 #   non-Mac host, most CI runners) is treated as unmeasurable and never
 #   blocks the spawn.
+#   For ship/scout tasks on a compatible tasks-axi backend, a missing task
+#   record prints a loud warning before launch but never blocks the spawn.
 #   A herdr crewmate or scout is placed in the exact workspace of the firstmate
 #   or secondmate process launching it, resolved from that process's own herdr
 #   pane rather than from a workspace label (herdr enforces no label uniqueness,
@@ -186,6 +188,8 @@ SUB_HOME_MARKER=".fm-secondmate-home"
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-disk-lib.sh
 . "$SCRIPT_DIR/fm-disk-lib.sh"
+# shellcheck source=bin/fm-tasks-axi-lib.sh
+. "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
@@ -430,6 +434,11 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
 fi
 ID=${POS[0]}
 fm_task_id_creation_valid "$ID" || { echo "error: invalid task id" >&2; exit 2; }
+if [ "$KIND" != secondmate ] && fm_tasks_axi_backend_available "$CONFIG"; then
+  if ! tasks-axi show "$ID" >/dev/null 2>&1; then
+    echo "WARNING: task '$ID' has no durable backlog record; run tasks-axi add so this work survives a session loss" >&2
+  fi
+fi
 SPAWN_TASK_LOCK="$STATE/.spawn-$ID.lock"
 if ! fm_lock_try_acquire "$SPAWN_TASK_LOCK"; then
   echo "error: another spawn is already creating task $ID" >&2
