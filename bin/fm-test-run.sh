@@ -1022,6 +1022,11 @@ families_for_changed_path() {
     bin/fm-ff-lib.sh|bin/fm-gotmp*|bin/*pretool*)
       printf '%s\n' pure-contract-unit
       ;;
+    .agents/skills/just-say-no-to-process-porn-and-ceremony/SKILL.md|\
+    .agents/skills/just-say-no-to-process-porn-and-ceremony/assets/*.md|\
+    .agents/skills/just-say-no-to-process-porn-and-ceremony/references/*.md)
+      printf '%s\n' pure-contract-unit
+      ;;
     .agents/skills/quota-array-dispatch/SKILL.md)
       printf '%s\n' pure-contract-unit
       printf '%s\n' live-harness-optin
@@ -1036,6 +1041,9 @@ families_for_changed_path() {
     docs/fm-test-portable-shards.md|docs/fm-test-isolation-proof.md|\
     docs/fm-test-isolation-proof.json|docs/secrets-*|docs/examples/project-secrets-policy.json|\
     docs/examples/doppler-*-job.yml|.agents/skills/secrets-management/SKILL.md)
+      printf '%s\n' pure-contract-unit
+      ;;
+    docs/documentation-audiences.json)
       printf '%s\n' pure-contract-unit
       ;;
     .github/*|.tasks.toml|AGENTS.md|CLAUDE.md|CONTRIBUTING.md|\
