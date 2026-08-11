@@ -75,6 +75,8 @@ config/herdr-presentation-spaces  optional presence flag for Herdr's default-off
 config/cmux-socket-password  optional cmux control-socket password; LOCAL, gitignored; read fresh on every cmux CLI call and passed through without ever overriding an operator's own ambient CMUX_SOCKET_PASSWORD when absent (docs/cmux-backend.md "Setup")
 config/wedge-alarm  optional away-mode wedge-alarm active-alert directives; LOCAL, gitignored; absent means auto (macOS Notification Center when available); see docs/wedge-alarm.md
 config/better-stack-incidents  optional presence flag for the home-scoped Better Stack incident poll; LOCAL, gitignored, and not inherited; see docs/configuration.md "Better Stack incident monitoring"
+config/woodpecker-error-poll  optional presence flag for the home-scoped Woodpecker pipeline-creation error poll; LOCAL, gitignored, and not inherited; see docs/configuration.md "Woodpecker creation-error monitoring"
+config/woodpecker-error-repos  monitored Woodpecker repositories as one owner/name per line; LOCAL, gitignored, and not inherited; see docs/configuration.md "Woodpecker creation-error monitoring"
 config/disk-floor    optional data-volume free-space floor override in whole GiB; LOCAL, gitignored; absent or invalid = default 10; see docs/configuration.md "Disk floor and reclaim"
 config/x-mode.env    generated X-mode watcher cadence; LOCAL, gitignored; source before arming watcher when present
 data/                personal fleet records; LOCAL, gitignored as a whole
@@ -105,6 +107,8 @@ state/               volatile runtime signals; gitignored
   x-watch.check.sh   generated X-mode relay poll shim; present only when opted in (section 14)
   better-stack-incidents.check.sh better-stack-incidents.check-trust  generated and registered home-scoped Better Stack incident poll; present only when opted in
   disk-guard.check.sh disk-guard.check-trust  generated and registered home-scoped Mac-mini disk floor check; always-on, no opt-in flag (docs/configuration.md "Disk floor and reclaim")
+  woodpecker-errors.check.sh woodpecker-errors.check-trust  generated and registered home-scoped Woodpecker creation-error poll; present only when opted in
+  woodpecker-errors.seen/ woodpecker-errors.receipts/ woodpecker-errors.diagnostics/  private Woodpecker pipeline, wake-recovery, and diagnostic dedupe state; retained across poll disable/re-enable
   better-stack-incidents.seen/ better-stack-incidents.diagnostics/  private incident-ID and diagnostic dedupe state retained across poll disable/re-enable
   pending-replies/   parent-owned secondmate pending-reply records (correlation id, delivery vs reply, recovery, escalation); fm-pending-reply-lib.sh
   x-inbox/           generated X-mode pending mention payloads; fmx-respond drains it (section 14)
@@ -144,7 +148,7 @@ A lock-refused session must not spawn, steer, merge, drain the wake queue, repai
 1. **Lock** - acquires the per-home session lock first, before anything mutates shared state.
 2. **Bootstrap** - detect-only checks (tool/version problems, GitHub auth, the worktree-tangle check, harness override, dispatch-profile validation, backlog-backend status) always run, but routine confirmations stay silent by default.
    When the lock could not be acquired, the worktree-tangle check uses read-only advisory wording without a checkout repair command.
-   Home-local stale Herdr projection cleanup and the six bootstrap MUTATING sweeps - non-executing legacy PR-check migration, fleet sync, the local secondmate fast-forward sweep, the secondmate liveness sweep, X-mode artifact writes, and Better Stack incident-poll registration - run only when this session actually holds the lock from step 1.
+   Home-local stale Herdr projection cleanup and the eight bootstrap MUTATING sweeps - non-executing legacy PR-check migration, fleet sync, the local secondmate fast-forward sweep, the secondmate liveness sweep, X-mode artifact writes, Better Stack incident-poll registration, Woodpecker error-poll registration, and disk-guard registration - run only when this session actually holds the lock from step 1.
    The secondmate liveness sweep deterministically accounts for every registered secondmate: it relaunches only from the recovery-grade `dead` or `missing` states, preserves ambiguous or unreadable targets, and reports skipped or failed guarantees as `SECONDMATE_LIVENESS:` lines (`bin/fm-bootstrap.sh`; `bin/fm-backend.sh`'s `fm_backend_agent_state`).
 3. **Wake queue** - when locked, drains the durable wake queue and prints the raw records prominently as this turn's first work queue; a bounded, clearly labeled historical status-event annotation may follow a valid `signal` record but never replaces it or current-state reconciliation, and a lapsed watcher chain still surfaces here via the same guard alarm.
    When the lock could not be acquired and verified, the queue is left untouched because no session mutation is authorized, and the guard's tangle/watcher-liveness alarms still print in read-only advisory mode without drain, supervision repair, or checkout repair commands.
@@ -354,7 +358,7 @@ The promoted worker must inventory scratch state, return to a clean default-bran
 Fleet supervision is an always-loaded operational contract; `docs/architecture.md`, `docs/turnend-guard.md`, the emitted session-start block, and script help own mechanisms and harness-specific recipes.
 
 Whenever work is under way, keep exactly one live supervision cycle using the emitted protocol for this primary harness.
-X mode or Better Stack incident monitoring may require that same live cycle with no fleet work.
+X mode, Better Stack incident monitoring, or Woodpecker creation-error monitoring may require that same live cycle with no fleet work.
 Do not substitute another harness's wait shape, use shell `&`, or create a second cycle when a healthy one already exists.
 For every actionable wake, follow the ordinary-wake continuation in the emitted protocol; use its repair action only when the live cycle is missing or failed.
 No turn ends blind while work is under way, including turns described as holding or waiting.
@@ -368,7 +372,7 @@ Handle actionable wakes as follows:
 
 1. For `signal:`, read the listed event lines first, then reconcile current state only where action depends on it.
 2. For `stale:`, inspect the recorded endpoint and load `stuck-crewmate-recovery` for a stopped, looping, confused, or unresponsive worker; a deep-inspection reason also requires current-state and validation-log inspection.
-3. For `check:`, act on the named poll result, including merges, X-mode events, and Better Stack incidents or diagnostics.
+3. For `check:`, act on the named poll result, including merges, X-mode events, Better Stack incidents or diagnostics, and Woodpecker creation errors or diagnostics.
 4. For `heartbeat:`, review the whole fleet from the structured fleet view, reconcile suspicious tasks and PR state, update the backlog, and never report an unchanged fleet as progress.
 
 For a `better-stack-incident opened ...` or `better-stack-incidents opened ...` result, load `diagnostic-reasoning` before scoping the response.
@@ -499,7 +503,7 @@ It performs guarded fast-forward updates of firstmate and registered secondmate 
 
 These skills are not captain-invocable; load them only at their precise triggers.
 
-- `bootstrap-diagnostics` - load whenever the session-start digest's bootstrap section prints an actionable diagnostic line (`MISSING:`, `MISSING_MANUAL:`, `BACKEND_INVALID:`, `NEEDS_GH_AUTH`, `TANGLE:`, `STARTUP_MEMORY_BUDGET:`, `CREW_DISPATCH: invalid`, `FLEET_SYNC:`, `PR_CHECK_MIGRATION:`, `SECONDMATE_SYNC:`, `SECONDMATE_LIVENESS:`, `NUDGE_SECONDMATES:`, `FMX:`, `BETTER_STACK:`, or `DISK_FLOOR:`); silence and `BOOTSTRAP_INFO:` need no load.
+- `bootstrap-diagnostics` - load whenever the session-start digest's bootstrap section prints an actionable diagnostic line (`MISSING:`, `MISSING_MANUAL:`, `BACKEND_INVALID:`, `NEEDS_GH_AUTH`, `TANGLE:`, `STARTUP_MEMORY_BUDGET:`, `CREW_DISPATCH: invalid`, `FLEET_SYNC:`, `PR_CHECK_MIGRATION:`, `SECONDMATE_SYNC:`, `SECONDMATE_LIVENESS:`, `NUDGE_SECONDMATES:`, `FMX:`, `BETTER_STACK:`, `WOODPECKER_ERRORS:`, or `DISK_FLOOR:`); silence and `BOOTSTRAP_INFO:` need no load.
 - `diagnostic-reasoning` - load before scoping a reported bug and before acting on a diagnostic report.
 - `ask-user-authority` - load before deciding any ask-user finding, regardless of the project's `yolo` posture.
 - `quota-array-dispatch` - load before choosing among a matched crew-dispatch profile array from current quota-axi output.
@@ -522,7 +526,7 @@ X mode ships inert and causes no behavior change until the home opts in by placi
 That token is consent for public replies and normal reversible lifecycle actions from eligible mentions, not authority for destructive, irreversible, or security-sensitive action; those still require trusted-channel confirmation.
 `docs/configuration.md` owns activation, generated state, cadence, wire protocol, and opt-out mechanics.
 
-A home with X mode or Better Stack incident monitoring still requires the live supervision cycle without fleet work.
+A home with X mode, Better Stack incident monitoring, or Woodpecker creation-error monitoring still requires the live supervision cycle without fleet work.
 On an `x-mention <request_id>` or `x-mode-error ...` check wake, load `fmx-respond`, which owns classification, public-safety policy, reply or dismissal, task linking, and follow-ups.
 For every X-linked terminal outcome, load that owner and use the promised-final reconciliation when a typed public commitment exists, otherwise post the final completion follow-up before teardown.
 

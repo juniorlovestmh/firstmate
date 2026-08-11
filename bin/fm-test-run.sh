@@ -132,7 +132,7 @@ family_for_basename() {
     fm-test-run.test.sh|fm-test-isolation-proof.test.sh|fm-toolchain-mirror.test.sh)
       printf '%s\n' pure-contract-unit
       ;;
-    fm-better-stack-incidents.test.sh|fm-daemon.test.sh|fm-guard-stale-banner.test.sh|fm-pi-watch-extension.test.sh|\
+    fm-better-stack-incidents.test.sh|fm-woodpecker-errors.test.sh|fm-daemon.test.sh|fm-guard-stale-banner.test.sh|fm-pi-watch-extension.test.sh|\
     fm-supervision-events.test.sh|fm-turnend-guard.test.sh|fm-wake-daemon-lifecycle-e2e.test.sh|\
     fm-wake-queue.test.sh|fm-watch-checkpoint.test.sh|fm-watch-triage.test.sh|\
     fm-watcher-lock.test.sh)

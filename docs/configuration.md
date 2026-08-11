@@ -11,7 +11,7 @@ The shared orchestrator behavior lives in [`AGENTS.md`](../AGENTS.md) - edit it 
 This section is the single owner of the top-level operational-home layout; producer script headers and their help own exact child-file fields and mutation contracts.
 The tracked code root contains the shared instruction, skill, documentation, workflow, and `bin/` surfaces, while each effective `FM_HOME` contains private operational directories.
 `data/` holds durable private fleet records such as the project and secondmate registries, captain preferences, optional shared captain preferences, learnings, backlog, briefs, and scout reports.
-`state/` holds volatile runtime records such as task metadata, append-only status events, endpoint signals, watcher and wake-queue coordination, away-mode state, generated X-mode and Better Stack poll artifacts, private secondmate config-reread generations with their retry and quarantine state, and parent-owned secondmate pending-reply records under `state/pending-replies/` (`bin/fm-pending-reply-lib.sh`).
+`state/` holds volatile runtime records such as task metadata, append-only status events, endpoint signals, watcher and wake-queue coordination, away-mode state, generated X-mode, Better Stack, and Woodpecker poll artifacts, private secondmate config-reread generations with their retry and quarantine state, and parent-owned secondmate pending-reply records under `state/pending-replies/` (`bin/fm-pending-reply-lib.sh`).
 `config/` holds local gitignored operating choices, and `projects/` holds the local project clones that Firstmate reads but changes only through the narrow guarded and concrete captain-approved exceptions in `AGENTS.md`.
 
 `bin/fm-spawn.sh` owns the base task-metadata fields it emits, while the runtime-backend section below owns backend-specific fields and selector interpretation.
@@ -330,6 +330,30 @@ Missing credentials, Doppler access failure, network failure, non-success HTTP s
 Remove `config/better-stack-incidents` and rerun locked session start to retire the runnable check and its trust binding.
 Bootstrap retains the private seen-ID, receipt, and diagnostic markers so disabling and later re-enabling the poll cannot re-notify every still-open incident.
 Better Stack polling from heartbeat handling was an interim practice and is retired; the registered check is the only poll owner, while [`AGENTS.md` section 8](../AGENTS.md#8-supervision-protocol) owns incident triage after a notification arrives.
+
+## Woodpecker creation-error monitoring (config/woodpecker-error-poll)
+
+Create an ordinary local file at `config/woodpecker-error-poll` in the one Firstmate home that should receive Woodpecker pipeline-creation error notifications.
+The file is a presence flag with no secret content, is gitignored, and is deliberately not inherited into secondmate homes so one pipeline error does not alert multiple supervisors.
+List each monitored repository as one `owner/name` line in the local, gitignored `config/woodpecker-error-repos` file.
+The next locked session-start bootstrap requires `doppler`, `curl`, and `jq`, writes `state/woodpecker-errors.check.sh`, and binds those exact shim bytes in `state/woodpecker-errors.check-trust` through `bin/fm-check-register.sh`.
+The registered poll runs through the existing hash-validated custom-check extension point on the default `FM_CHECK_INTERVAL=300` cadence, stays active even with no project work in flight, and converts each output line into a durable `check:` notification.
+
+`bin/fm-woodpecker-errors-poll.sh` invokes its child with `doppler run -p fleet-ci -c prd --only-secrets WOODPECKER_ADMIN_TOKEN` and never persists or prints the token.
+Its public entrypoint re-executes exactly as `doppler run -p fleet-ci -c prd --only-secrets WOODPECKER_ADMIN_TOKEN -- <self> --from-doppler`, with the token available only in the child environment.
+The child sends the bearer header to `curl` through standard input rather than a command argument or temporary file.
+It uses only bounded GET requests against `https://ci.appheat.co/api`: first `GET /repos/lookup/{owner}/{name}`, then `GET /repos/{id}/pipelines?perPage=10`.
+Each HTTP request has a maximum five-second curl bound, and the complete check finishes within `FM_CHECK_TIMEOUT`.
+The poll never writes to Woodpecker and prints nothing for a quiet or already-seen result.
+
+Only a pipeline whose status is exactly `error` emits `woodpecker-error <owner>/<name> pipeline=<number> <first error message>`.
+The `failure`, `success`, and `killed` statuses stay silent because those step-level outcomes already report through the forge integration.
+Before emitting, the poll publishes an identity-bound receipt under `state/woodpecker-errors.receipts/` and then claims the pipeline identity under `state/woodpecker-errors.seen/`. The watcher commits each receipt to one durable `check:` wake under the wake-queue lock, then retires the receipt; a watcher restart recovers any receipt left across that boundary without duplicating an existing wake.
+Missing configuration, credentials, Doppler access, network access, non-success HTTP responses, malformed API data, and dedupe-state failures print one `woodpecker-poll-error ...` diagnostic and record it in `state/woodpecker-errors.diagnostics/error`.
+An identical diagnostic remains silent until a fully successful poll clears the marker or a different failure occurs.
+
+Remove `config/woodpecker-error-poll` and rerun locked session start to retire the runnable check and its trust binding.
+Bootstrap retains the private seen-pipeline, receipt, and diagnostic markers so disabling and later re-enabling the poll cannot replay known errors.
 
 ## Disk floor and reclaim (config/disk-floor)
 

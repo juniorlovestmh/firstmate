@@ -321,6 +321,17 @@ test_hook_x_mode_reason_sources_cadence() {
   pass "fm-turnend-guard: X-mode repair reason sources the cadence config"
 }
 
+test_hook_claude_woodpecker_poll_names_supervision_need() {
+  local dir out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-woodpecker-poll")
+  : > "$dir/state/woodpecker-errors.check.sh"
+  out=$(FM_CLAUDE_AUTOARM_SYNC_WAIT_MS=100 run_hook_claude "$dir" false); status=$?
+  expect_code 2 "$status" "Claude hook must block when Woodpecker monitoring has no live watcher"
+  assert_contains "$out" "Woodpecker creation-error monitoring needs supervision" \
+    "block reason must name the active Woodpecker monitoring need"
+  pass "fm-turnend-guard --claude: Woodpecker-only homes name their supervision need"
+}
+
 test_hook_ignores_repo_state_when_fm_home_set() {
   local dir home out status
   dir=$(make_primary_dir "$TMP_ROOT/hook-fm-home-ignore-root")
@@ -1118,6 +1129,7 @@ test_hook_blocks_with_live_lock_and_stale_beacon
 test_hook_blocks_when_unhealthy_in_primary
 test_hook_blocks_from_fm_home_state
 test_hook_x_mode_reason_sources_cadence
+test_hook_claude_woodpecker_poll_names_supervision_need
 test_hook_ignores_repo_state_when_fm_home_set
 test_hook_uses_state_override
 test_hook_loop_guard_allows_retry
