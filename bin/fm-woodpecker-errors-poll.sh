@@ -116,7 +116,8 @@ mark_seen_once() {
 }
 
 receipt_matches() {
-  local identity=$1 payload=$2 receipt="$RECEIPT_DIR/$identity"
+  local identity=$1 payload=$2
+  local receipt="$RECEIPT_DIR/$identity"
   local version receipt_identity receipt_payload
   fmx_private_artifact_file_valid "$RECEIPT_DIR" "$identity" 600 || return 1
   exec 9< "$receipt" || return 1
@@ -134,7 +135,8 @@ receipt_matches() {
 }
 
 publish_receipt_once() {
-  local identity=$1 payload=$2 receipt="$RECEIPT_DIR/$identity" rc
+  local identity=$1 payload=$2
+  local receipt="$RECEIPT_DIR/$identity" rc
   if fmx_private_artifact_file_valid "$RECEIPT_DIR" "$identity" 600; then
     if receipt_matches "$identity" "$payload"; then
       return 1
