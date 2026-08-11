@@ -137,6 +137,24 @@ test_missing_doppler_and_token_report_once() {
   pass "missing Doppler and token diagnostics are deduped and non-fatal"
 }
 
+test_empty_repo_config_reports_once() {
+  local dir out rc
+  dir=$(make_case empty-repos)
+  : > "$dir/home/config/woodpecker-error-repos"
+
+  out=$(run_poll "$dir" env FM_TEST_WOODPECKER_TOKEN=synthetic-test-token); rc=$?
+  expect_code 0 "$rc" "empty repository config poll exit"
+  [ "$out" = 'woodpecker-poll-error config/woodpecker-error-repos has no repositories' ] \
+    || fail "empty repository config must print one diagnostic (got: $out)"
+
+  out=$(run_poll "$dir" env FM_TEST_WOODPECKER_TOKEN=synthetic-test-token); rc=$?
+  expect_code 0 "$rc" "repeated empty repository config poll exit"
+  [ -z "$out" ] || fail "repeated empty repository config must stay silent (got: $out)"
+  assert_present "$dir/home/state/woodpecker-errors.diagnostics/error" \
+    "empty repository diagnostic must remain published"
+  pass "empty repository configuration diagnostics are deduped"
+}
+
 test_registered_check_delivers_one_wake_per_pipeline() {
   local dir state shim body rc wake_count
   dir=$(make_case watcher-delivery)
@@ -224,6 +242,7 @@ test_woodpecker_check_keeps_home_supervised() {
 test_error_pipeline_wakes_once
 test_non_error_statuses_stay_silent
 test_missing_doppler_and_token_report_once
+test_empty_repo_config_reports_once
 test_registered_check_delivers_one_wake_per_pipeline
 test_bootstrap_arms_and_retires_home_check
 test_woodpecker_check_keeps_home_supervised

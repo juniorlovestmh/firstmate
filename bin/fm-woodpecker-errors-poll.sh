@@ -223,7 +223,7 @@ poll_with_injected_token() {
 
   if [ "$saw_repo" -eq 0 ]; then
     emit_error_once "config/woodpecker-error-repos has no repositories"
-    return 0
+    had_error=1
   fi
   [ "$had_error" -ne 0 ] || clear_error
 }
