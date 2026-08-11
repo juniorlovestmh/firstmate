@@ -181,6 +181,26 @@ test_invalid_receipt_reports_once() {
   pass "invalid Woodpecker receipts produce one deduplicated diagnostic"
 }
 
+test_short_timeout_fails_fast_once() {
+  local dir start elapsed out rc
+  dir=$(make_case short-timeout)
+
+  start=$SECONDS
+  out=$(run_poll "$dir" env FM_TEST_WOODPECKER_TOKEN=synthetic-test-token \
+    FM_CHECK_TIMEOUT=1); rc=$?
+  elapsed=$((SECONDS - start))
+  expect_code 0 "$rc" "short timeout poll exit"
+  [ "$out" = 'woodpecker-poll-error Woodpecker API poll timed out' ] \
+    || fail "short timeout must print one timeout diagnostic (got: $out)"
+  [ "$elapsed" -le 1 ] || fail "short timeout poll exceeded its one-second budget"
+
+  out=$(run_poll "$dir" env FM_TEST_WOODPECKER_TOKEN=synthetic-test-token \
+    FM_CHECK_TIMEOUT=1); rc=$?
+  expect_code 0 "$rc" "repeated short timeout poll exit"
+  [ -z "$out" ] || fail "repeated short timeout must stay silent (got: $out)"
+  pass "short timeout fails fast and deduplicates its diagnostic"
+}
+
 test_registered_check_delivers_one_wake_per_pipeline() {
   local dir state shim body rc wake_count
   dir=$(make_case watcher-delivery)
@@ -307,6 +327,7 @@ test_non_error_statuses_stay_silent
 test_missing_doppler_and_token_report_once
 test_empty_repo_config_reports_once
 test_invalid_receipt_reports_once
+test_short_timeout_fails_fast_once
 test_registered_check_delivers_one_wake_per_pipeline
 test_woodpecker_receipt_recovers_after_poll_boundary
 test_bootstrap_arms_and_retires_home_check

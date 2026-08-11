@@ -180,7 +180,6 @@ poll_with_injected_token() {
   case "$POLL_BUDGET" in
     ''|*[!0-9]*) POLL_BUDGET=30 ;;
   esac
-  [ "$POLL_BUDGET" -gt 1 ] || POLL_BUDGET=30
   POLL_STARTED_AT=$SECONDS
   API_CODE=
   API_BODY=
