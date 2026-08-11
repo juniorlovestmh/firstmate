@@ -760,6 +760,27 @@ test_routine_bootstrap_contract_runs_under_system_bash() {
   pass "bootstrap routine contract runs under system /bin/bash"
 }
 
+test_muster_diagnostic_appears_only_with_findings() {
+  local case_dir fakebin worktree out
+  case_dir="$TMP_ROOT/muster-diagnostic"
+  mkdir -p "$case_dir/home" "$case_dir/treehouse/pool/1"
+  fakebin=$(make_fake_toolchain "$case_dir")
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    FM_TREEHOUSE_ROOT_OVERRIDE="$case_dir/treehouse" FM_FAKE_TREEHOUSE_LEASE_HELP=1 \
+    "$ROOT/bin/fm-bootstrap.sh")
+  assert_not_contains "$out" "MUSTER:" "empty treehouse root produced a muster diagnostic"
+
+  worktree="$case_dir/treehouse/pool/1/dirty-repo"
+  fm_git_init_commit "$worktree"
+  printf 'dirty\n' >> "$worktree/README.md"
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    FM_TREEHOUSE_ROOT_OVERRIDE="$case_dir/treehouse" FM_FAKE_TREEHOUSE_LEASE_HELP=1 \
+    "$ROOT/bin/fm-bootstrap.sh")
+  assert_contains "$out" "MUSTER: 1 worktree(s) holding unrecorded work - run bin/fm-muster.sh" \
+    "dirty treehouse worktree did not produce the bounded muster diagnostic"
+  pass "bootstrap prints MUSTER only when the read-only sweep finds unrecorded work"
+}
+
 test_crew_dispatch_active_rules_are_verbose_bootstrap_info() {
   local case_dir fakebin out expect
   case_dir="$TMP_ROOT/dispatch-active"
@@ -851,5 +872,6 @@ test_fleet_sync_timeout_empty_override_uses_default
 test_fleet_sync_timeout_is_computed_before_launch
 test_routine_bootstrap_confirmations_are_silent
 test_routine_bootstrap_contract_runs_under_system_bash
+test_muster_diagnostic_appears_only_with_findings
 test_crew_dispatch_active_rules_are_verbose_bootstrap_info
 test_crew_dispatch_validation

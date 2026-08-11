@@ -152,6 +152,7 @@ if [ -z "${HONEST_WORK_RULES//[[:space:]]/}" ]; then
   echo "error: required honest-work credit-rules module is empty: $HONEST_WORK_MODULE" >&2
   exit 1
 fi
+CAPTAIN_TEXT_RULE="Any text the captain reads directly, including reports, summaries, and captain-facing documents, must follow \`~/.claude/skills/simple-english\` in pragmatic mode. Use 20 words per instruction and 25 words per description. Use active voice and one instruction or fact per sentence. Do not use \`should\`, \`may\`, or \`might\`. Agent-to-agent and internal text is exempt."
 
 BRIEF="$DATA/$ID/brief.md"
 BRIEF_SAFETY_MARKER='<!-- firstmate-brief-scaffold-safety:v1 -->'
@@ -275,6 +276,7 @@ Do not invent a second delegation system.
 You do not generate your own work.
 Act only on tasks the main firstmate routes to you.
 Never start a survey, audit, or "find improvements" sweep on your own initiative; that is not your job and it is unwanted.
+$CAPTAIN_TEXT_RULE
 
 # Requests from the main firstmate
 You are a firstmate in your own home, so an incoming message reaches you in your own chat.
@@ -382,8 +384,9 @@ The report is the only thing that survives, so anything worth keeping must be in
 # Rules
 1. Never push to any remote and never open a PR.
 2. Stay inside this worktree; the only files you may write outside it are the report and the status file below.
-3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
-4. Report status by appending one line:
+3. $CAPTAIN_TEXT_RULE
+4. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+5. Report status by appending one line:
    \`echo "\$(date -u +%Y-%m-%dT%H:%M:%SZ) {state}: {one short line}" >> $STATUS_FILE\`
    Prefer an ISO8601 UTC timestamp prefix (status-timestamp-contract); readers accept both
    \`2026-07-19T12:00:00Z {state}: …\` and legacy bare \`{state}: …\` lines.
@@ -395,11 +398,11 @@ The report is the only thing that survives, so anything worth keeping must be in
    known external wait you expect to clear on its own (an upstream release, a rate-limit reset):
    firstmate then leaves your idle pane alone and rechecks it on a long cadence instead of
    treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
-5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
-6. If a decision belongs to a human (product choices, destructive actions),
+6. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
+7. If a decision belongs to a human (product choices, destructive actions),
    append \`needs-decision: {summary of options}\` and stop. Firstmate will reply with the decision.
    When firstmate replies or a blocker clears and you resume, append \`resolved: {how it was decided or unblocked}\` (add the same \`[key=<slug>]\` if you opened it with one) so the decision or blocker is durably closed and does not keep resurfacing.
-7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
+8. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
    daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
 
@@ -518,8 +521,10 @@ If the top-level path is the primary checkout or not the worktree you were launc
 # Rules
 $RULE1
 2. Stay inside this worktree; modify nothing outside it.
-3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
-4. Report status by appending one line:
+3. Do not create or modify CI workflow files (.woodpecker/, .github/workflows/) or shared CI scripts unless this brief's Task section explicitly assigns CI ownership; if your change seems to need a CI edit, append \`blocked:\` and stop.
+4. $CAPTAIN_TEXT_RULE
+5. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+6. Report status by appending one line:
    \`echo "\$(date -u +%Y-%m-%dT%H:%M:%SZ) {state}: {one short line}" >> $STATUS_FILE\`
    Prefer an ISO8601 UTC timestamp prefix (status-timestamp-contract); readers accept both
    \`2026-07-19T12:00:00Z {state}: …\` and legacy bare \`{state}: …\` lines.
@@ -534,11 +539,11 @@ $RULE1
    known external wait you expect to clear on its own (an upstream release, a rate-limit reset,
    a scheduled window): firstmate then leaves your idle pane alone and rechecks it on a long
    cadence instead of treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
-5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
-6. If a decision belongs above the implementation worker (product choices, destructive actions, ask-user findings),
+7. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
+8. If a decision belongs above the implementation worker (product choices, destructive actions, ask-user findings),
    append \`needs-decision: {summary of options}\` and stop. Firstmate will apply the configured authority and reply with the decision.
    When firstmate replies or a blocker clears and you resume, append \`resolved: {how it was decided or unblocked}\` (add the same \`[key=<slug>]\` if you opened it with one) so the decision or blocker is durably closed and does not keep resurfacing.
-7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
+9. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
    daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
 

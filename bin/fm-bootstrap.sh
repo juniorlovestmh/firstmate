@@ -13,6 +13,7 @@
 #                 "FLEET_SYNC: <repo>: skipped|recovered|STUCK: <detail>",
 #                 "PR_CHECK_MIGRATION: <private remediation>",
 #                 "TANGLE: <remediation>",
+#                 "MUSTER: <n> worktree(s) holding unrecorded work - run bin/fm-muster.sh",
 #                 "SECONDMATE_SYNC: secondmate <id>: skipped: <reason>",
 #                 "NUDGE_SECONDMATES: secondmate <id>: send failed: <reason>",
 #                 "BOOTSTRAP_INFO: nudged fm-<id> with '<message>'",
@@ -1126,6 +1127,14 @@ if [ -n "$tangle_branch" ]; then
   else
     echo "TANGLE: primary checkout on feature branch '$tangle_branch' (expected '$tangle_default'); the work is safe on that ref - restore the primary with: git -C $FM_ROOT checkout $tangle_default, then re-validate the branch in a proper worktree"
   fi
+fi
+# Read-only muster sweep: surface dirty, local-only, and locally-ahead treehouse
+# worktrees while their location is still discoverable. Like the tangle check,
+# this detects only and is safe in a lock-refused session.
+muster_output=$("$SCRIPT_DIR/fm-muster.sh")
+muster_count=$(printf '%s\n' "$muster_output" | awk 'NF { count++ } END { print count + 0 }')
+if [ "$muster_count" -gt 0 ]; then
+  echo "MUSTER: $muster_count worktree(s) holding unrecorded work - run bin/fm-muster.sh"
 fi
 # Disk floor loud warning (fleet-local-disk-guard-o14): read-only, so it
 # runs every bootstrap including lock-refused read-only sessions - a captain
