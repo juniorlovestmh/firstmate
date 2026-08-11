@@ -25,9 +25,9 @@ An unmarked checkout or invalid marker falls through to the git-dir check.
 That check keeps crewmate and scout linked worktrees inert because their git dir differs from their git common dir.
 It also requires `AGENTS.md`, `bin/`, and the effective state directory.
 
-For an in-scope primary, the guard counts in-flight work from `state/*.meta` and recognizes the generated X-mode and Better Stack checks as independent home-level supervision needs.
+For an in-scope primary, the guard counts in-flight work from `state/*.meta` and recognizes the generated X-mode, Better Stack, and Woodpecker checks as independent home-level supervision needs.
 The default cross-harness mode exits silently with no work in flight.
-Claude's `--claude` mode uses that full supervision predicate, so either home-level poll remains guarded without an in-flight task.
+Claude's `--claude` mode uses that full supervision predicate, so each home-level poll remains guarded without an in-flight task.
 Otherwise it calls `fm_watcher_healthy <state-dir> <watch-path> [grace-seconds] [home]` from `bin/fm-wake-lib.sh`, the same identity-matched lock and fresh-beacon check used by `bin/fm-watch-arm.sh`.
 A stale beacon blocks even when a watcher pid is live.
 A fresh leftover beacon blocks when the lock is missing, dead, or identity-mismatched.

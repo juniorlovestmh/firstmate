@@ -785,6 +785,12 @@ while :; do
               *) reason="check: $c: $incident_line"; fm_wake_append check "$c" "$reason" || exit 1 ;;
             esac
           done <<< "$out"
+        elif [ "$(basename "$c")" = woodpecker-errors.check.sh ]; then
+          while IFS= read -r woodpecker_line; do
+            [ -n "$woodpecker_line" ] || continue
+            reason="check: $c: $woodpecker_line"
+            fm_wake_append check "$c" "$reason" || exit 1
+          done <<< "$out"
         else
           reason="check: $c: $out"
           fm_wake_append check "$c" "$reason" || exit 1

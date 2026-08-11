@@ -168,6 +168,8 @@ block_stop() {
       printf '●  X-mode relay and Better Stack incident monitoring need supervision, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_BEACON_DESC"
     elif [ -f "$STATE/better-stack-incidents.check.sh" ]; then
       printf '●  Better Stack incident monitoring needs supervision, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_BEACON_DESC"
+    elif [ -f "$STATE/woodpecker-errors.check.sh" ]; then
+      printf '●  Woodpecker creation-error monitoring needs supervision, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_BEACON_DESC"
     else
       printf '●  X-mode relay polling needs supervision, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_BEACON_DESC"
     fi
@@ -237,6 +239,8 @@ if [ "$COUNT" -gt "$BLOCK_BUDGET" ]; then
     NEED_DESC="X-mode relay and Better Stack incident monitoring active"
   elif [ -f "$STATE/better-stack-incidents.check.sh" ]; then
     NEED_DESC="Better Stack incident monitoring active"
+  elif [ -f "$STATE/woodpecker-errors.check.sh" ]; then
+    NEED_DESC="Woodpecker creation-error monitoring active"
   else
     NEED_DESC="X-mode relay polling active"
   fi

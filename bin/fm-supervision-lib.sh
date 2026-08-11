@@ -3,7 +3,8 @@
 # Usage: . bin/fm-supervision-lib.sh
 #
 # Reports whether a firstmate home needs supervision because it has in-flight
-# work (a state/<id>.meta exists) or a home-level poll (X mode or Better Stack),
+# work (a state/<id>.meta exists) or a home-level poll (X mode, Better Stack,
+# or Woodpecker creation errors),
 # and whether its watcher has a fresh liveness beacon (state/.last-watcher-beat,
 # touched every poll cycle, within the grace window).
 # bin/fm-guard.sh keeps its task-specific grace-based warning predicate;
@@ -43,7 +44,8 @@ fm_supervision_status() {
   done
   if [ "$FM_SUP_IN_FLIGHT" -gt 0 ] \
     || [ -f "$state/x-watch.check.sh" ] \
-    || [ -f "$state/better-stack-incidents.check.sh" ]; then
+    || [ -f "$state/better-stack-incidents.check.sh" ] \
+    || [ -f "$state/woodpecker-errors.check.sh" ]; then
     FM_SUP_NEEDED=true
   fi
 
