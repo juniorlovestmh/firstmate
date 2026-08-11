@@ -115,12 +115,35 @@ mark_seen_once() {
   esac
 }
 
+receipt_matches() {
+  local identity=$1 payload=$2 receipt="$RECEIPT_DIR/$identity"
+  local version receipt_identity receipt_payload
+  fmx_private_artifact_file_valid "$RECEIPT_DIR" "$identity" 600 || return 1
+  exec 9< "$receipt" || return 1
+  IFS= read -r version <&9 || { exec 9<&-; return 1; }
+  IFS= read -r receipt_identity <&9 || { exec 9<&-; return 1; }
+  IFS= read -r receipt_payload <&9 || { exec 9<&-; return 1; }
+  if IFS= read -r <&9; then
+    exec 9<&-
+    return 1
+  fi
+  exec 9<&-
+  [ "$version" = fm-woodpecker-error-receipt-v1 ] \
+    && [ "$receipt_identity" = "$identity" ] \
+    && [ "$receipt_payload" = "$payload" ]
+}
+
 publish_receipt_once() {
   local identity=$1 payload=$2 receipt="$RECEIPT_DIR/$identity" rc
   if fmx_private_artifact_file_valid "$RECEIPT_DIR" "$identity" 600; then
-    return 1
+    if receipt_matches "$identity" "$payload"; then
+      return 1
+    fi
+    emit_error_once "invalid Woodpecker wake receipt"
+    return 2
   fi
   if [ -e "$receipt" ] || [ -L "$receipt" ]; then
+    emit_error_once "invalid Woodpecker wake receipt"
     return 2
   fi
   printf 'fm-woodpecker-error-receipt-v1\n%s\n%s\n' "$identity" "$payload" \

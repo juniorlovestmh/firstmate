@@ -155,6 +155,32 @@ test_empty_repo_config_reports_once() {
   pass "empty repository configuration diagnostics are deduped"
 }
 
+test_invalid_receipt_reports_once() {
+  local dir state out rc
+  dir=$(make_case invalid-receipt)
+  state="$dir/home/state"
+  mkdir -p "$state/woodpecker-errors.receipts"
+  printf 'not-a-woodpecker-receipt\n' \
+    > "$state/woodpecker-errors.receipts/repo-77-pipeline-40"
+  chmod 0600 "$state/woodpecker-errors.receipts/repo-77-pipeline-40"
+
+  out=$(run_poll "$dir" env FM_TEST_WOODPECKER_TOKEN=synthetic-test-token \
+    FM_TEST_PIPELINES_BODY='[{"number":40,"status":"error","errors":[{"message":"blocked"}]}]'); rc=$?
+  expect_code 0 "$rc" "invalid receipt poll exit"
+  [ "$out" = 'woodpecker-poll-error invalid Woodpecker wake receipt' ] \
+    || fail "invalid receipt must print one diagnostic (got: $out)"
+
+  out=$(run_poll "$dir" env FM_TEST_WOODPECKER_TOKEN=synthetic-test-token \
+    FM_TEST_PIPELINES_BODY='[{"number":40,"status":"error","errors":[{"message":"blocked"}]}]'); rc=$?
+  expect_code 0 "$rc" "repeated invalid receipt poll exit"
+  [ -z "$out" ] || fail "repeated invalid receipt must stay silent (got: $out)"
+  assert_absent "$state/woodpecker-errors.seen/repo-77-pipeline-40" \
+    "invalid receipt must not fabricate a seen marker"
+  assert_absent "$state/.wake-queue" \
+    "invalid receipt direct poll must not fabricate a durable wake"
+  pass "invalid Woodpecker receipts produce one deduplicated diagnostic"
+}
+
 test_registered_check_delivers_one_wake_per_pipeline() {
   local dir state shim body rc wake_count
   dir=$(make_case watcher-delivery)
@@ -280,6 +306,7 @@ test_error_pipeline_wakes_once
 test_non_error_statuses_stay_silent
 test_missing_doppler_and_token_report_once
 test_empty_repo_config_reports_once
+test_invalid_receipt_reports_once
 test_registered_check_delivers_one_wake_per_pipeline
 test_woodpecker_receipt_recovers_after_poll_boundary
 test_bootstrap_arms_and_retires_home_check
