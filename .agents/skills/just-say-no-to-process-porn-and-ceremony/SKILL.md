@@ -275,6 +275,6 @@ the rules.
 | Claim/evidence honesty, null results, no self-certification | [HONESTY-PROTOCOL.md](references/HONESTY-PROTOCOL.md) |
 | Redirect prompts, tracker encoding, canarying enforcement | [ENFORCEMENT.md](references/ENFORCEMENT.md) |
 
-Related skills: `vibing-with-ntm` (live swarm policing), `ntm`
-(code-first/batch-verify mechanics), `modes-of-reasoning-project-analysis`
-(audited-claim analysis), `cass` (mining past sessions for the inventory).
+When available in the host harness, related skills can provide live swarm
+policing, batch verification, audited-claim analysis, or session mining for
+the inventory.
