@@ -932,6 +932,12 @@ if ! fm_pr_poll_retirement_recover_all "$STATE" "$SCRIPT_DIR/fm-pr-poll.sh"; the
   touch "$STATE/.last-check"
   wake "$reason"
 fi
+fm_wake_recover_woodpecker_receipts || exit 1
+if [ "${FM_WOODPECKER_RECOVERED:-0}" -gt 0 ]; then
+  reason="check: recovered Woodpecker error receipt"
+  touch "$STATE/.last-check"
+  wake "$reason"
+fi
 
 resurface_after_downtime() {
   # Handling successors already have a predecessor-delivered wake on the way.
@@ -1055,6 +1061,17 @@ while :; do
                 fm_wake_append_incident_once "$id" "$reason" || exit 1
                 ;;
               *) reason="check: $c: $incident_line"; fm_wake_append check "$c" "$reason" || exit 1 ;;
+            esac
+          done <<< "$out"
+        elif [ "$(basename "$c")" = woodpecker-errors.check.sh ]; then
+          while IFS= read -r woodpecker_line; do
+            [ -n "$woodpecker_line" ] || continue
+            reason="check: $c: $woodpecker_line"
+            case "$woodpecker_line" in
+              woodpecker-error\ *)
+                fm_wake_commit_woodpecker_output_once "$woodpecker_line" || exit 1
+                ;;
+              *) fm_wake_append check "$c" "$reason" || exit 1 ;;
             esac
           done <<< "$out"
         else

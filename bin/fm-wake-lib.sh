@@ -1176,6 +1176,117 @@ fm_wake_queued_keys_locked() {
     "$FM_WAKE_QUEUE" 2>/dev/null || true
 }
 
+fm_wake_woodpecker_receipt_valid() {
+  local receipt=$1 identity=$2 version receipt_identity payload
+  local receipt_dir=${receipt%/*} base=${receipt##*/}
+  fmx_private_artifact_file_valid "$receipt_dir" "$base" 600 || return 1
+  exec 9< "$receipt" || return 1
+  IFS= read -r version <&9 || { exec 9<&-; return 1; }
+  IFS= read -r receipt_identity <&9 || { exec 9<&-; return 1; }
+  IFS= read -r payload <&9 || { exec 9<&-; return 1; }
+  if IFS= read -r <&9; then
+    exec 9<&-
+    return 1
+  fi
+  exec 9<&-
+  [ "$version" = fm-woodpecker-error-receipt-v1 ] \
+    && [ "$receipt_identity" = "$identity" ] \
+    && [ -n "$payload" ] \
+    && printf '%s\n' "$payload"
+}
+
+fm_wake_append_woodpecker_once() {
+  local identity=$1 payload=$2
+  local key="woodpecker-error:$identity"
+  local seen_dir="$STATE/woodpecker-errors.seen" seen_file="$STATE/woodpecker-errors.seen/$identity"
+  local receipt_dir="$STATE/woodpecker-errors.receipts" receipt="$STATE/woodpecker-errors.receipts/$identity"
+  local epoch seq seq_file status=0 marker_rc
+  [[ "$identity" =~ ^repo-[0-9]+-pipeline-[0-9]+$ ]] || return 2
+  declare -F fmx_private_artifact_file_valid >/dev/null 2>&1 || return 2
+  declare -F fmx_private_artifact_publish_stdin_once >/dev/null 2>&1 || return 2
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
+  if [ -e "$seen_file" ] || [ -L "$seen_file" ]; then
+    if fmx_private_artifact_file_valid "$seen_dir" "$identity" 600 \
+      && awk -F '\t' -v key="$key" '$3 == "check" && $4 == key { found=1 } END { exit !found }' "$FM_WAKE_QUEUE" 2>/dev/null; then
+      rm -f -- "$receipt" 2>/dev/null || true
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      return 0
+    fi
+    if ! fmx_private_artifact_file_valid "$seen_dir" "$identity" 600; then
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      return 2
+    fi
+  fi
+  if ! fm_wake_woodpecker_receipt_valid "$receipt" "$identity" >/dev/null; then
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    return 2
+  fi
+  if awk -F '\t' -v key="$key" '$3 == "check" && $4 == key { found=1 } END { exit !found }' "$FM_WAKE_QUEUE" 2>/dev/null; then
+    printf 'seen\n' | fmx_private_artifact_publish_stdin_once "$seen_dir" "$identity" 600 >/dev/null 2>&1
+    marker_rc=$?
+    if [ "$marker_rc" -eq 0 ] || [ "$marker_rc" -eq 1 ]; then
+      rm -f -- "$receipt" 2>/dev/null || true
+    fi
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    [ "$marker_rc" -eq 0 ] || [ "$marker_rc" -eq 1 ] || return 2
+    return 0
+  fi
+  epoch=$(date +%s)
+  seq_file="$STATE/.wake-queue.seq"
+  seq=$(cat "$seq_file" 2>/dev/null || echo 0)
+  case "$seq" in ''|*[!0-9]*) seq=0 ;; esac
+  seq=$((seq + 1))
+  printf '%s\n' "$seq" > "$seq_file" || status=$?
+  if [ "$status" -eq 0 ]; then
+    printf '%s\t%s\tcheck\t%s\t%s\n' "$epoch" "$seq" "$key" "$payload" >> "$FM_WAKE_QUEUE" || status=$?
+  fi
+  if [ "$status" -eq 0 ]; then
+    printf 'seen\n' | fmx_private_artifact_publish_stdin_once "$seen_dir" "$identity" 600 >/dev/null 2>&1
+    marker_rc=$?
+    [ "$marker_rc" -eq 0 ] || [ "$marker_rc" -eq 1 ] || status=2
+  fi
+  if [ "$status" -eq 0 ]; then
+    rm -f -- "$receipt" 2>/dev/null || status=$?
+  fi
+  fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+  return "$status"
+}
+
+fm_wake_commit_woodpecker_output_once() {
+  local payload=$1 receipt identity receipt_payload matched=0 rc=0
+  local receipt_dir="$STATE/woodpecker-errors.receipts"
+  [ -d "$receipt_dir" ] && [ ! -L "$receipt_dir" ] || return 2
+  for receipt in "$receipt_dir"/*; do
+    [ -e "$receipt" ] || continue
+    identity=$(basename "$receipt")
+    receipt_payload=$(fm_wake_woodpecker_receipt_valid "$receipt" "$identity") || { rc=2; continue; }
+    [ "$receipt_payload" = "$payload" ] || continue
+    matched=1
+    fm_wake_append_woodpecker_once "$identity" "$payload" || rc=2
+  done
+  [ "$matched" -eq 1 ] || return 2
+  return "$rc"
+}
+
+fm_wake_recover_woodpecker_receipts() {
+  local receipt identity payload rc=0
+  local receipt_dir="$STATE/woodpecker-errors.receipts"
+  FM_WOODPECKER_RECOVERED=0
+  [ -d "$receipt_dir" ] && [ ! -L "$receipt_dir" ] || return 0
+  for receipt in "$receipt_dir"/*; do
+    [ -e "$receipt" ] || continue
+    [ -f "$receipt" ] && [ ! -L "$receipt" ] || { rc=2; continue; }
+    identity=$(basename "$receipt")
+    payload=$(fm_wake_woodpecker_receipt_valid "$receipt" "$identity") || { rc=2; continue; }
+    if fm_wake_append_woodpecker_once "$identity" "$payload"; then
+      FM_WOODPECKER_RECOVERED=$((FM_WOODPECKER_RECOVERED + 1))
+    else
+      rc=2
+    fi
+  done
+  return "$rc"
+}
+
 fm_wake_restore_queue() {
   local drained=$1 restore
   restore="$STATE/.wake-queue.restore.$(fm_current_pid)"
