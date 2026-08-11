@@ -29,7 +29,7 @@ case "${1:-}:${2:-}" in
   --version:) printf '0.2.2\n' ;;
   update:--help) printf 'usage: tasks-axi update <id> [flags]\n  --archive-body\n' ;;
   mv:--help) printf 'usage: tasks-axi mv <id> [<id>...] --to <path-or-dir>\n' ;;
-  show:*) [ "${FM_FAKE_TASK_EXISTS:-0}" = 1 ] ;;
+  show:*) [ "$PWD" = "${FM_FAKE_TASK_HOME:-}" ] && [ "${FM_FAKE_TASK_EXISTS:-0}" = 1 ] ;;
   *) exit 0 ;;
 esac
 SH
@@ -57,7 +57,7 @@ run_case() {
   FM_ROOT_OVERRIDE='' FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
     FM_DATA_OVERRIDE="$home/data" FM_PROJECTS_OVERRIDE="$home/projects" \
     FM_CONFIG_OVERRIDE="$home/config" FM_SPAWN_NO_GUARD=1 TMUX='fake,1,0' \
-    FM_FAKE_PANE_PATH="$worktree" FM_FAKE_TASK_EXISTS="$exists" \
+    FM_FAKE_PANE_PATH="$worktree" FM_FAKE_TASK_HOME="$home" FM_FAKE_TASK_EXISTS="$exists" \
     PATH="$fakebin:$PATH" "$SPAWN" "$id" "$project" 2>&1
 }
 

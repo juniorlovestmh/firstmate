@@ -435,7 +435,7 @@ fi
 ID=${POS[0]}
 fm_task_id_creation_valid "$ID" || { echo "error: invalid task id" >&2; exit 2; }
 if [ "$KIND" != secondmate ] && fm_tasks_axi_backend_available "$CONFIG"; then
-  if ! tasks-axi show "$ID" >/dev/null 2>&1; then
+  if ! (cd "$FM_HOME" && tasks-axi show "$ID" >/dev/null 2>&1); then
     echo "WARNING: task '$ID' has no durable backlog record; run tasks-axi add so this work survives a session loss" >&2
   fi
 fi
