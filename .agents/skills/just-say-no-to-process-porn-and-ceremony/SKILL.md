@@ -26,7 +26,14 @@ This skill and its referenced files are the sole full-doctrine owner for Firstma
 [`assets/credit-rules.md`](assets/credit-rules.md) is the canonical transport module that `bin/fm-brief.sh` injects into generated ship, scout, and secondmate instructions.
 Do not copy that module into another template or adapter.
 For a direct report that was already live before this skill reached its home, do not regenerate or overwrite its instructions.
-After the receiving home contains this skill, load `harness-adapters` and use `bin/fm-send.sh` with the owning `FM_HOME` explicitly set to send one short steer that points to the canonical module and says it applies immediately without expanding scope.
+After the receiving home contains this skill, load `harness-adapters`, substitute the actual receiving root for `<receiving-firstmate-root>` and the target task id for `<task-id>`, then run the following with the owning `FM_HOME` explicitly set:
+
+```sh
+steer='Effective immediately, within your existing assigned scope, read and follow the binding credit rules at <receiving-firstmate-root>/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md; do not regenerate your instructions or expand scope.'
+FM_HOME="<receiving-firstmate-root>" bin/fm-send.sh "<task-id>" "$steer"
+```
+
+This one-line steer applies immediately without regenerating or overwriting the live instruction.
 Ordinary tiny work follows the credit rules but does not trigger a worksheet unless the worksheet's own stated trigger applies.
 
 ## Quick Start (the loop, solo or orchestrating)
