@@ -240,13 +240,15 @@ test_existing_current_brief_still_requires_freshness_verification() {
 }
 
 test_force_regeneration_preserves_brief_when_rendering_fails() {
-  local home id brief fake_root status archive_count
+  local home id brief fake_root status archive_count module
   home="$TMP_ROOT/failed-regeneration-home"
   id=failed-regeneration-guard
   brief="$home/data/$id/brief.md"
   fake_root="$home/fake-root"
-  mkdir -p "$(dirname "$brief")" "$fake_root/bin"
+  module="$fake_root/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md"
+  mkdir -p "$(dirname "$brief")" "$fake_root/bin" "$(dirname "$module")"
   printf '%s\n' 'original brief must survive a failed regeneration' > "$brief"
+  printf '%s\n' '# CREDIT RULES (binding)' > "$module"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "$fake_root/bin/fm-project-mode.sh"
   chmod +x "$fake_root/bin/fm-project-mode.sh"
 
@@ -296,6 +298,98 @@ test_ship_modes_generate_clean_briefs() {
     assert_no_grep "EOF" "$brief" "$id: brief leaked a heredoc EOF marker (unterminated heredoc)"
   done
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
+}
+
+test_every_generated_instruction_carries_honest_work_credit_rules() {
+  local home id brief kind count expected_module actual_module
+  home="$TMP_ROOT/honest-work-home"
+  mkdir -p "$home/data"
+  expected_module=$(cat "$ROOT/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md")
+
+  for kind in ship scout secondmate; do
+    id="honest-work-$kind"
+    case "$kind" in
+      ship)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" sample-project >"$home/$id.out" 2>"$home/$id.err"
+        ;;
+      scout)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" sample-project --scout >"$home/$id.out" 2>"$home/$id.err"
+        ;;
+      secondmate)
+        FM_HOME="$home" FM_SECONDMATE_CHARTER='Review honest work.' \
+          "$ROOT/bin/fm-brief.sh" "$id" --secondmate --no-projects >"$home/$id.out" 2>"$home/$id.err"
+        ;;
+    esac
+    brief="$home/data/$id/brief.md"
+    assert_present "$brief" "$kind instruction was not generated"
+    assert_grep '# CREDIT RULES (binding)' "$brief" \
+      "$kind instruction omitted the binding credit-rules module"
+    assert_grep 'When the assigned work changes code, real code and real tests must ship in the same work item.' "$brief" \
+      "$kind instruction omitted the scoped code-plus-tests credit floor"
+    assert_grep 'Knowledge-only work, including a scout report, does not authorize implementation; deliver only the assigned evidence or report.' "$brief" \
+      "$kind instruction omitted the knowledge-only scope boundary"
+    assert_grep 'Mocks, fixtures, captures, and replay are never live proof.' "$brief" \
+      "$kind instruction omitted the proof-class boundary"
+    assert_grep 'An explicitly assigned knowledge deliverable is authorized by that assignment' "$brief" \
+      "$kind instruction omitted the assigned knowledge-deliverable boundary"
+    assert_grep 'Do not create any other process artifact unless it names a concrete consumer' "$brief" \
+      "$kind instruction omitted the process-artifact creation gate"
+    assert_grep 'A worker or subagent report is a claim, not evidence.' "$brief" \
+      "$kind instruction omitted the report-is-a-claim boundary"
+    assert_grep 'No-Claim: Green tests prove only the exercised behavior' "$brief" \
+      "$kind instruction omitted the explicit No-Claim boundary"
+    count=$(grep -Fc '# CREDIT RULES (binding)' "$brief")
+    [ "$count" = 1 ] || fail "$kind instruction rendered the canonical module $count times"
+    actual_module=$(awk '
+      /^# CREDIT RULES \(binding\)$/ { capture=1 }
+      /^# (Charter|Task)$/ && capture { exit }
+      capture { print }
+    ' "$brief")
+    [ "$actual_module" = "$expected_module" ] \
+      || fail "$kind instruction did not transport the complete canonical credit-rules module"
+  done
+  pass "fm-brief.sh: ship, scout, and secondmate instructions carry one binding credit-rules module"
+}
+
+test_missing_honest_work_module_refuses_before_writing_a_brief() {
+  local home fake_root id out err status=0
+  home="$TMP_ROOT/honest-work-missing-home"
+  fake_root="$TMP_ROOT/honest-work-missing-root"
+  id=honest-work-missing
+  out="$home/generate.out"
+  err="$home/generate.err"
+  mkdir -p "$home/data" "$fake_root"
+
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fake_root" \
+    "$ROOT/bin/fm-brief.sh" "$id" sample-project >"$out" 2>"$err" || status=$?
+  expect_code 1 "$status" "a missing honest-work module must stop instruction generation"
+  assert_grep 'required honest-work credit-rules module is missing or unreadable' "$err" \
+    "missing honest-work module did not produce the owning diagnostic"
+  assert_grep "$fake_root/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md" "$err" \
+    "missing-module diagnostic did not identify the canonical module"
+  assert_absent "$home/data/$id/brief.md" \
+    "missing honest-work module still left a launchable instruction file"
+  pass "fm-brief.sh: a missing canonical credit-rules module refuses before writing a brief"
+}
+
+test_whitespace_only_honest_work_module_refuses_before_writing_a_brief() {
+  local home fake_root id err status=0 module
+  home="$TMP_ROOT/honest-work-whitespace-home"
+  fake_root="$TMP_ROOT/honest-work-whitespace-root"
+  id=honest-work-whitespace
+  err="$home/generate.err"
+  module="$fake_root/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md"
+  mkdir -p "$home/data" "$(dirname "$module")"
+  printf ' \t\n  \n' >"$module"
+
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fake_root" \
+    "$ROOT/bin/fm-brief.sh" "$id" sample-project >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a whitespace-only honest-work module must stop instruction generation"
+  assert_grep 'required honest-work credit-rules module is empty' "$err" \
+    "whitespace-only honest-work module did not produce the owning diagnostic"
+  assert_absent "$home/data/$id/brief.md" \
+    "whitespace-only honest-work module still left a launchable instruction file"
+  pass "fm-brief.sh: a whitespace-only canonical credit-rules module refuses before writing a brief"
 }
 
 test_faster_paths_use_configured_authority_without_stacked_review() {
@@ -483,10 +577,13 @@ test_herdr_lab_contract_is_explicit_and_complete() {
 }
 
 test_herdr_lab_contract_quotes_foreign_firstmate_path() {
-  local home id brief foreign_root helper
+  local home id brief foreign_root helper module_dir
   home="$TMP_ROOT/herdr-lab-foreign-home"
   foreign_root="$TMP_ROOT/firstmate helper's root"
-  mkdir -p "$home/data"
+  module_dir="$foreign_root/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets"
+  mkdir -p "$home/data" "$module_dir"
+  cp "$ROOT/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md" \
+    "$module_dir/credit-rules.md"
   id="brief-herdr-lab-foreign-d2"
   helper=$(printf '%s' "$foreign_root/bin/fm-herdr-lab.sh" | sed "s/'/'\\\\''/g")
   helper="'$helper'"
@@ -795,6 +892,9 @@ test_existing_brief_refusal_detects_staleness_and_force_regenerates
 test_existing_current_brief_still_requires_freshness_verification
 test_force_regeneration_preserves_brief_when_rendering_fails
 test_ship_modes_generate_clean_briefs
+test_every_generated_instruction_carries_honest_work_credit_rules
+test_missing_honest_work_module_refuses_before_writing_a_brief
+test_whitespace_only_honest_work_module_refuses_before_writing_a_brief
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ship_project_memory_wording
