@@ -280,8 +280,8 @@ FM_WEDGE_DEMAND_INSPECT_COUNT=${FM_WEDGE_DEMAND_INSPECT_COUNT:-3}
 # demand-deep-inspection behavior. Shared by both places a hash can be absorbed
 # this way: the plain non-terminal path, and the stale_is_terminal-overridden
 # path (a captain-relevant status-log line that an active run/busy pane outranked).
-wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-file>
-  local win=$1 since_file=$2 label=$3 escalation_file=$4 since age n reason
+wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-file> [authoritative-class]
+  local win=$1 since_file=$2 label=$3 escalation_file=$4 authoritative_class=${5:-} since age n reason
   local key absorb_file now task class absorb_since absorb_age
   key=$(printf '%s' "$win" | tr ':/.' '___')
   absorb_file="$STATE/.wedge-absorb-since-$key"
@@ -315,8 +315,12 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
           ;;
       esac
       if [ "$age" -ge "$STALE_ESCALATE_SECS" ]; then
-        task=$(window_to_task "$win" "$STATE")
-        class=$(crew_absorb_class "$task")
+        if [ -n "$authoritative_class" ]; then
+          class=$authoritative_class
+        else
+          task=$(window_to_task "$win" "$STATE")
+          class=$(crew_absorb_class "$task")
+        fi
         if [ "$class" = working ]; then
           absorb_since=$(cat "$absorb_file" 2>/dev/null || true)
           case "$absorb_since" in
@@ -1053,7 +1057,7 @@ EOF
                 paused)  handle_paused_stale "$w" "$task" "$h" ;;
                 working) clear_pause_state "$w"
                          printf '%s' "$h" > "$sf"
-                         wedge_timer_check "$w" "$ssf" "non-terminal stale (provably working after a declared pause)" "$ewf"
+                         wedge_timer_check "$w" "$ssf" "non-terminal stale (provably working after a declared pause)" "$ewf" working
                          triage_log "absorbed non-terminal stale (provably working): $w" ;;
                 *)       handle_paused_stale "$w" "$task" "$h" ;;
               esac
