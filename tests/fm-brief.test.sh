@@ -301,9 +301,10 @@ test_ship_modes_generate_clean_briefs() {
 }
 
 test_every_generated_instruction_carries_honest_work_credit_rules() {
-  local home id brief kind count
+  local home id brief kind count expected_module actual_module
   home="$TMP_ROOT/honest-work-home"
   mkdir -p "$home/data"
+  expected_module=$(cat "$ROOT/.agents/skills/just-say-no-to-process-porn-and-ceremony/assets/credit-rules.md")
 
   for kind in ship scout secondmate; do
     id="honest-work-$kind"
@@ -339,6 +340,13 @@ test_every_generated_instruction_carries_honest_work_credit_rules() {
       "$kind instruction omitted the explicit No-Claim boundary"
     count=$(grep -Fc '# CREDIT RULES (binding)' "$brief")
     [ "$count" = 1 ] || fail "$kind instruction rendered the canonical module $count times"
+    actual_module=$(awk '
+      /^# CREDIT RULES \(binding\)$/ { capture=1 }
+      /^# (Charter|Task)$/ && capture { exit }
+      capture { print }
+    ' "$brief")
+    [ "$actual_module" = "$expected_module" ] \
+      || fail "$kind instruction did not transport the complete canonical credit-rules module"
   done
   pass "fm-brief.sh: ship, scout, and secondmate instructions carry one binding credit-rules module"
 }

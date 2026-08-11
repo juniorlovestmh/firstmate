@@ -128,6 +128,42 @@ test_no_profile_keeps_claude_profile_defaults() {
   pass "no --model/--effort records defaults and types the claude launch instructions"
 }
 
+test_public_dispatch_delivers_generated_brief() {
+  local rec id out status launch capture prompt expected
+  id=profile-generated-brief-z1e
+  rec=$(make_spawn_case profile-generated-brief claude "$id")
+  read_case_record "$rec"
+  rm "$HOME_DIR/data/$id/brief.md"
+  FM_HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$ROOT" \
+    "$ROOT/bin/fm-brief.sh" "$id" sample-project >/dev/null 2>&1 \
+    || fail "fm-brief.sh did not generate the public dispatch brief"
+  capture="$CASE_DIR/agent-prompt"
+  cat > "$FAKEBIN_DIR/claude" <<'SH'
+#!/usr/bin/env bash
+set -u
+last=
+for arg in "$@"; do last=$arg; done
+printf '%s' "$last" > "$FM_FAKE_AGENT_CAPTURE"
+SH
+  chmod +x "$FAKEBIN_DIR/claude"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "public spawn dispatch should succeed for a generated brief"
+  launch=$(cat "$LAUNCH_LOG")
+  FM_FAKE_AGENT_CAPTURE="$capture" PATH="$FAKEBIN_DIR:$PATH" \
+    bash -c "$launch" || fail "captured public dispatch launch did not execute"
+  prompt=$(cat "$capture")
+  expected=$(FM_HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$ROOT" \
+    "$ROOT/bin/fm-operational-input.sh" encode launch-brief \
+    < "$HOME_DIR/data/$id/brief.md")
+  [ "$prompt" = "$expected" ] \
+    || fail "public dispatch did not deliver the generated brief through launch-brief"
+  assert_contains "$prompt" "# CREDIT RULES (binding)" \
+    "public dispatch prompt omitted the generated canonical module"
+  pass "fm-spawn.sh: public dispatch delivers the generated brief exactly"
+}
+
 test_relative_home_overrides_launch_with_absolute_cross_process_paths() {
   local rec id out status launch home_real
   id=profile-relative-paths-z1b
@@ -668,6 +704,7 @@ test_active_dispatch_profile_does_not_block_secondmate_launch() {
 }
 
 test_no_profile_keeps_claude_profile_defaults
+test_public_dispatch_delivers_generated_brief
 test_relative_home_overrides_launch_with_absolute_cross_process_paths
 test_home_defaults_preserve_absolute_or_resolve_relative_paths
 test_absolute_override_spelling_is_preserved_in_launch_paths
