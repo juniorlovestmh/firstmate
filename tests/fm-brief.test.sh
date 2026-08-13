@@ -178,6 +178,34 @@ test_help_includes_entire_header() {
   pass "fm-brief.sh: --help renders the complete header"
 }
 
+test_ship_task_guidance_is_structured_and_proportional() {
+  local home help brief out
+  home="$TMP_ROOT/ship-task-guidance-home"
+  out="$home/scaffold.out"
+  mkdir -p "$home/data"
+
+  help=$("$ROOT/bin/fm-brief.sh" --help)
+  assert_contains "$help" "numbered, individually testable acceptance criteria" \
+    "fm-brief.sh --help omitted numbered, testable acceptance-criteria guidance"
+  assert_contains "$help" "explicit non-goals list" \
+    "fm-brief.sh --help omitted proportional non-goals guidance"
+
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" ship-task-guidance sample-project >"$out" 2>&1 \
+    || fail "ship brief with structured task guidance did not scaffold"
+  brief="$home/data/ship-task-guidance/brief.md"
+  assert_grep "numbered, individually testable acceptance criteria" "$brief" \
+    "ship brief omitted numbered, testable acceptance-criteria guidance"
+  assert_grep "every criterion checkable by a command, test, or observation" "$brief" \
+    "ship brief omitted the acceptance-criteria verification bar"
+  assert_grep "multi-slice or product-shaped features, include an explicit non-goals list" "$brief" \
+    "ship brief omitted proportional non-goals guidance"
+  assert_grep "github/spec-kit structure" "$brief" \
+    "ship brief omitted attribution for the adapted structure"
+  assert_grep "replace {TASK} with numbered, individually testable acceptance criteria" "$out" \
+    "ship scaffold hint omitted the structured task guidance"
+  pass "fm-brief.sh: ship task guidance is numbered, testable, and proportional"
+}
+
 test_existing_brief_refusal_detects_staleness_and_force_regenerates() {
   local home id brief err out status archive_count archive
   home="$TMP_ROOT/stale-brief-home"
@@ -917,6 +945,7 @@ test_scout_and_secondmate_scaffold() {
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
+test_ship_task_guidance_is_structured_and_proportional
 test_existing_brief_refusal_detects_staleness_and_force_regenerates
 test_existing_current_brief_still_requires_freshness_verification
 test_force_regeneration_preserves_brief_when_rendering_fails

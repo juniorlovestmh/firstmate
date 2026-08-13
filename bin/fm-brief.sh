@@ -3,9 +3,10 @@
 # data/<task-id>/brief.md under the active firstmate home.
 # For ordinary tasks, the standard Setup/Rules/Definition-of-done contract is
 # filled in. Firstmate then replaces the {TASK} placeholder with the task
-# description, acceptance criteria, and context, and may adjust other sections
-# when the task genuinely deviates (e.g. working an existing external PR instead
-# of shipping a new one).
+# description, constraints, and necessary context, and may adjust other sections when the task genuinely deviates.
+# For ship tasks, write numbered, individually testable acceptance criteria, with every criterion checkable by a command, test, or observation.
+# For multi-slice or product-shaped features, include an explicit non-goals list.
+# This brief shape adapts github/spec-kit structure without importing its prose, toolkit, dependencies, or process.
 # Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--herdr-lab] [--force-regenerate]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects} [--force-regenerate]
 #   --scout writes the scout contract instead: the deliverable is a report at
@@ -505,6 +506,10 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 $HONEST_WORK_RULES
 
 # Task
+<!-- Replace {TASK} with the task description, constraints, and necessary context.
+Write numbered, individually testable acceptance criteria, with every criterion checkable by a command, test, or observation.
+For multi-slice or product-shaped features, include an explicit non-goals list.
+This brief shape adapts github/spec-kit structure without importing its prose or tooling. -->
 {TASK}
 
 $HERDR_SECTION
@@ -559,4 +564,4 @@ $DOGFOOD_SECTION
 $DOD
 EOF
 install_staged_brief || exit 1
-echo "scaffolded: $BRIEF (ship, mode=$MODE; replace {TASK})"
+echo "scaffolded: $BRIEF (ship, mode=$MODE; replace {TASK} with numbered, individually testable acceptance criteria and explicit non-goals when applicable)"
