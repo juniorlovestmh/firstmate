@@ -1,0 +1,10 @@
+schema_version: 1
+kind: saas
+entities:
+  - product: "Cloudflare"
+    account: "appheat"
+    purpose: "DNS and tunnels"
+    limit_posture: "free"
+    source: "declarative"
+    collected_at: "2026-08-09T00:00:00Z"
+    authority: "fleet operator"

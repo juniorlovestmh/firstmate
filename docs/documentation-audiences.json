@@ -248,6 +248,54 @@
       "audience": "maintainer-architecture"
     },
     {
+      "path": "docs/estate-catalog.md",
+      "audience": "operator-current"
+    },
+    {
+      "path": "docs/examples/estate-catalog/ci.yaml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/database.yaml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/dns.yaml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/host.yaml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/repository.yaml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/saas.yaml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/schema.json",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/secret_project.yaml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/service.yaml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/system.yaml",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/estate-catalog/tunnel.yaml",
+      "audience": "operator-example"
+    },
+    {
       "path": "docs/examples/doppler-oidc-job.yml",
       "audience": "operator-example"
     },

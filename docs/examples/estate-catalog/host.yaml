@@ -1,0 +1,12 @@
+schema_version: 1
+kind: host
+entities:
+  - id: "woodpecker-ci"
+    provider: "proxmox"
+    vmid: 110
+    ip: "192.168.1.112"
+    role: "ci"
+    ssh_path: "ubuntu@192.168.1.112"
+    source: "declarative"
+    collected_at: "2026-08-09T00:00:00Z"
+    authority: "fleet operator"

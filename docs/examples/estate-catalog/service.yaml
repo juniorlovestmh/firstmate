@@ -1,0 +1,12 @@
+schema_version: 1
+kind: service
+entities:
+  - id: "woodpecker"
+    system: "fleet-ci"
+    host: "woodpecker-ci"
+    url: "https://ci.appheat.co"
+    health_url: "https://ci.appheat.co/healthz"
+    deploy_path: "/home/deploy/woodpecker"
+    source: "declarative"
+    collected_at: "2026-08-09T00:00:00Z"
+    authority: "fleet operator"

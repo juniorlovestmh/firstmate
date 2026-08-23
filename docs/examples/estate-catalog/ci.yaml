@@ -1,0 +1,12 @@
+schema_version: 1
+kind: ci
+entities:
+  - id: "woodpecker"
+    product: "woodpecker"
+    host: "woodpecker-ci"
+    url: "https://ci.appheat.co"
+    agent_labels: ["repo=appheat/bible-agents"]
+    notes: "Use the VM-local endpoint for JSON API mutations."
+    source: "declarative"
+    collected_at: "2026-08-09T00:00:00Z"
+    authority: "fleet operator"

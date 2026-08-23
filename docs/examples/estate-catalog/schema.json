@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://firstmate.local/schemas/estate-catalog.v1.json",
+  "title": "Firstmate estate catalog source document",
+  "type": "object",
+  "required": ["schema_version", "kind", "entities"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {
+      "enum": [
+        "system",
+        "repository",
+        "host",
+        "service",
+        "ci",
+        "dns",
+        "tunnel",
+        "saas",
+        "database",
+        "secret_project"
+      ]
+    },
+    "status": {"$ref": "#/$defs/status"},
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/entity"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "system"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["id", "owner", "product", "lifecycle"], "propertyNames": {"enum": ["id", "owner", "product", "lifecycle", "source", "collected_at", "authority"]}}}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "repository"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["id", "github", "delivery_mode", "verify_cmd", "ci", "base_branch"], "propertyNames": {"enum": ["id", "github", "delivery_mode", "verify_cmd", "ci", "base_branch", "source", "collected_at", "authority"]}}}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "host"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["id", "provider", "ip", "role", "ssh_path"], "propertyNames": {"enum": ["id", "provider", "vmid", "ip", "role", "ssh_path", "source", "collected_at", "authority"]}}}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "service"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["id", "system", "host", "url", "deploy_path"], "propertyNames": {"enum": ["id", "system", "host", "url", "health_url", "deploy_path", "source", "collected_at", "authority"]}}}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "ci"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["id", "product", "url", "agent_labels", "notes"], "propertyNames": {"enum": ["id", "product", "host", "url", "agent_labels", "notes", "source", "collected_at", "authority"]}}}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "dns"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["name", "provider", "target", "purpose"], "propertyNames": {"enum": ["name", "provider", "target", "purpose", "source", "collected_at", "authority"]}}}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "tunnel"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["id", "provider", "hostname", "backend"], "propertyNames": {"enum": ["id", "provider", "hostname", "backend", "source", "collected_at", "authority"]}}}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "saas"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["product", "account", "purpose", "limit_posture"], "propertyNames": {"enum": ["product", "account", "purpose", "limit_posture", "source", "collected_at", "authority"]}}}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "database"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["id", "engine", "host_ref", "app", "env"], "propertyNames": {"enum": ["id", "engine", "host_ref", "app", "env", "source", "collected_at", "authority"]}}}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "secret_project"}}},
+      "then": {"properties": {"entities": {"items": {"required": ["doppler_project", "configs", "apps"], "propertyNames": {"enum": ["doppler_project", "configs", "apps", "source", "collected_at", "authority"]}}}}}
+    }
+  ],
+  "$defs": {
+    "nonEmptyString": {"type": "string", "minLength": 1},
+    "stringArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "status": {
+      "type": "object",
+      "required": ["state"],
+      "additionalProperties": false,
+      "properties": {
+        "state": {"enum": ["current", "stale"]},
+        "marked_at": {"type": "string", "format": "date-time"},
+        "reason": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"state": {"const": "stale"}}},
+          "then": {"required": ["marked_at", "reason"]}
+        }
+      ]
+    },
+    "entity": {
+      "type": "object",
+      "required": ["source", "collected_at", "authority"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmptyString"},
+        "name": {"$ref": "#/$defs/nonEmptyString"},
+        "owner": {"$ref": "#/$defs/nonEmptyString"},
+        "product": {"$ref": "#/$defs/nonEmptyString"},
+        "lifecycle": {"$ref": "#/$defs/nonEmptyString"},
+        "github": {"$ref": "#/$defs/nonEmptyString"},
+        "delivery_mode": {"enum": ["no-mistakes", "direct-PR", "local-only", "unknown"]},
+        "verify_cmd": {"$ref": "#/$defs/nonEmptyString"},
+        "ci": {"enum": ["woodpecker", "none", "exception", "unknown"]},
+        "base_branch": {"$ref": "#/$defs/nonEmptyString"},
+        "provider": {"enum": ["proxmox", "exe.dev", "gcp", "mac", "cloudflare", "unknown"]},
+        "vmid": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"const": "unknown"}
+          ]
+        },
+        "ip": {"$ref": "#/$defs/nonEmptyString"},
+        "role": {"$ref": "#/$defs/nonEmptyString"},
+        "ssh_path": {"$ref": "#/$defs/nonEmptyString"},
+        "system": {"$ref": "#/$defs/nonEmptyString"},
+        "host": {"$ref": "#/$defs/nonEmptyString"},
+        "url": {"$ref": "#/$defs/nonEmptyString"},
+        "health_url": {"$ref": "#/$defs/nonEmptyString"},
+        "deploy_path": {"$ref": "#/$defs/nonEmptyString"},
+        "agent_labels": {"$ref": "#/$defs/stringArray"},
+        "notes": {"$ref": "#/$defs/nonEmptyString"},
+        "target": {"$ref": "#/$defs/nonEmptyString"},
+        "purpose": {"$ref": "#/$defs/nonEmptyString"},
+        "hostname": {"$ref": "#/$defs/nonEmptyString"},
+        "backend": {"$ref": "#/$defs/nonEmptyString"},
+        "account": {"$ref": "#/$defs/nonEmptyString"},
+        "limit_posture": {"enum": ["free", "paid", "owned", "unknown"]},
+        "engine": {"$ref": "#/$defs/nonEmptyString"},
+        "host_ref": {"$ref": "#/$defs/nonEmptyString"},
+        "app": {"$ref": "#/$defs/nonEmptyString"},
+        "env": {"$ref": "#/$defs/nonEmptyString"},
+        "doppler_project": {"$ref": "#/$defs/nonEmptyString"},
+        "configs": {"$ref": "#/$defs/stringArray"},
+        "apps": {"$ref": "#/$defs/stringArray"},
+        "source": {"enum": ["declarative", "collected"]},
+        "collected_at": {"type": "string", "format": "date-time"},
+        "authority": {"$ref": "#/$defs/nonEmptyString"}
+      }
+    }
+  }
+}

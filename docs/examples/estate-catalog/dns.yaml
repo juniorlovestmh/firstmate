@@ -1,0 +1,10 @@
+schema_version: 1
+kind: dns
+entities:
+  - name: "ci.appheat.co"
+    provider: "cloudflare"
+    target: "tunnel:woodpecker-ci"
+    purpose: "Woodpecker web and webhook endpoint"
+    source: "declarative"
+    collected_at: "2026-08-09T00:00:00Z"
+    authority: "fleet operator"

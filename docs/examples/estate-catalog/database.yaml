@@ -1,0 +1,11 @@
+schema_version: 1
+kind: database
+entities:
+  - id: "woodpecker-sqlite"
+    engine: "sqlite"
+    host_ref: "woodpecker-ci"
+    app: "fleet-ci"
+    env: "production"
+    source: "declarative"
+    collected_at: "2026-08-09T00:00:00Z"
+    authority: "fleet operator"

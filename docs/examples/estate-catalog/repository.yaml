@@ -1,0 +1,12 @@
+schema_version: 1
+kind: repository
+entities:
+  - id: "bible-agents"
+    github: "appheat/bible-agents"
+    delivery_mode: "no-mistakes"
+    verify_cmd: "pnpm verify"
+    ci: "woodpecker"
+    base_branch: "main"
+    source: "declarative"
+    collected_at: "2026-08-09T00:00:00Z"
+    authority: "data/projects.md"
